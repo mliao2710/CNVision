@@ -1,87 +1,80 @@
-# cnvision/coordinate_mapper.py
+"""
+coordinate_mapper.py — Functions for mapping CNVs to exons and regions
+"""
 
-def map_cnv_to_exons(cnv, mane_data):
+def map_cnv_to_exons(cnv, mane_data, transcript=None):
     """
-    Map a CNV (with keys: gene, start, end, type) to MANE exons for each transcript.
-    Returns a list of dicts; one per transcript:
-      {
-        "transcript": transcript_id,
-        "exons_hit": [ exon_numbers ],
-        "overlaps": [
-            {"exon": exon_number, "exon_start": x, "exon_end": y,
-             "overlap_start": s, "overlap_end": e, "overlap_len": L}
-        ],
-        "total_overlap_len": N  # sum of overlap_len for this transcript
-      }
-    """
-    gene = cnv.get("gene")
-    start = cnv.get("start")
-    end = cnv.get("end")
+    Map a CNV (genomic start/end) to MANE exons for a given transcript.
 
-    if gene is None or start is None or end is None:
-        return None
+    Args:
+        cnv: dict with keys 'gene', 'start', 'end', 'type'
+        mane_data: dict returned by load_mane_exons
+        transcript: optional transcript id (if None, take first MANE transcript)
+
+    Returns:
+        list of dicts with keys: transcript, hit_exons, cnv_type
+    """
+    gene = cnv["gene"]
+    start = cnv["start"]
+    end = cnv["end"]
+    cnv_type = cnv["type"]
 
     if gene not in mane_data:
-        return None
-
-    results = []
-    for transcript, exons in mane_data[gene].items():
-        overlaps = []
-        exons_hit = []
-        total_overlap = 0
-        for exon in exons:
-            exon_num = exon.get("exon")
-            exon_start = exon.get("start")
-            exon_end = exon.get("end")
-
-            # check overlap
-            ov_start = max(start, exon_start)
-            ov_end = min(end, exon_end)
-            if ov_start <= ov_end:
-                overlap_len = ov_end - ov_start + 1  # inclusive coordinates
-                overlaps.append({
-                    "exon": exon_num,
-                    "exon_start": exon_start,
-                    "exon_end": exon_end,
-                    "overlap_start": ov_start,
-                    "overlap_end": ov_end,
-                    "overlap_len": overlap_len
-                })
-                exons_hit.append(exon_num)
-                total_overlap += overlap_len
-
-        results.append({
-            "transcript": transcript,
-            "exons_hit": exons_hit,
-            "overlaps": overlaps,
-            "total_overlap_len": total_overlap
-        })
-        
-
-    return results
-
-def map_exon_numbers_to_coordinates(gene, exon_list, mane_data):
-    """
-    Takes gene + exon numbers and returns genomic (start, end) coords.
-    """
-
-    if gene not in mane_data:
-        raise ValueError(f"Gene {gene} not found in MANE")
+        return []
 
     gene_transcripts = mane_data[gene]
+    if transcript is None:
+        transcript = list(gene_transcripts.keys())[0]
 
-    # Use MANE Select transcript if available
-    transcript = sorted(gene_transcripts.keys())[0]
-    exons = gene_transcripts[transcript]
+    exon_list = gene_transcripts[transcript]
+    hit_exons = []
 
-    starts = []
-    ends = []
+    for exon in exon_list:
+        exon_start = exon["start"]
+        exon_end = exon["end"]
 
-    for exon_num in exon_list:
-        if exon_num not in exons:
-            raise ValueError(f"Exon {exon_num} not found in MANE for {gene}")
+        # Check for overlap
+        if end < exon_start or start > exon_end:
+            continue
+        hit_exons.append(exon["exon"])
 
-        starts.append(exons[exon_num]["genomic_start"])
-        ends.append(exons[exon_num]["genomic_end"])
+    return [
+        {
+            "transcript": transcript,
+            "hit_exons": hit_exons,
+            "cnv_type": cnv_type,
+            "predicted_consequence": None,  # To be filled by functional_predictor
+        }
+    ]
 
-    return min(starts), max(ends)
+
+def map_exon_numbers_to_regions(gene, transcript, first_exon, last_exon, mane_data):
+    """
+    Convert a range of exon numbers to genomic coordinates.
+
+    Args:
+        gene: gene symbol
+        transcript: transcript id
+        first_exon: first exon number
+        last_exon: last exon number
+        mane_data: dict from load_mane_exons
+
+    Returns:
+        tuple (start, end) genomic coordinates, or None if invalid exon numbers
+    """
+    if gene not in mane_data or transcript not in mane_data[gene]:
+        return None
+
+    exon_list = mane_data[gene][transcript]
+
+    # Filter only exons in range
+    selected = [e for e in exon_list if e["exon"] is not None and first_exon <= e["exon"] <= last_exon]
+
+    if not selected:
+        return None
+
+    # Genomic start is the smallest start, end is largest end
+    genomic_start = min(e["start"] for e in selected)
+    genomic_end = max(e["end"] for e in selected)
+
+    return genomic_start, genomic_end
