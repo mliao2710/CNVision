@@ -2,53 +2,73 @@
 coordinate_mapper.py — Functions for mapping CNVs to exons and regions
 """
 
-def map_cnv_to_exons(cnv, mane_data, transcript=None):
+from typing import Dict, List, Optional, Tuple, Any
+
+def map_cnv_to_exons(
+    cnv: Dict[str, Any],
+    mane_data: Dict[str, Dict[str, List[Dict[str, Any]]]],
+    transcript: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
     Map a CNV (genomic start/end) to MANE exons for a given transcript.
 
     Args:
         cnv: dict with keys 'gene', 'start', 'end', 'type'
-        mane_data: dict returned by load_mane_exons
-        transcript: optional transcript id (if None, take first MANE transcript)
+        mane_data: dict returned by load_mane_exons, structured as gene -> transcript -> exon list
+        transcript: optional transcript id (if None, use first MANE transcript)
 
     Returns:
-        list of dicts with keys: transcript, hit_exons, cnv_type
+        list of dicts with keys:
+            - transcript
+            - hit_exons (list of overlapping exon numbers)
+            - cnv_type
+            - predicted_consequence (currently None, placeholder for functional predictor)
     """
-    gene = cnv["gene"]
-    start = cnv["start"]
-    end = cnv["end"]
-    cnv_type = cnv["type"]
+    gene = cnv.get("gene")
+    start = cnv.get("start")
+    end = cnv.get("end")
+    cnv_type = cnv.get("type")
 
     if gene not in mane_data:
         return []
 
-    gene_transcripts = mane_data[gene]
-    if transcript is None:
-        transcript = list(gene_transcripts.keys())[0]
+    transcripts = mane_data[gene]
+    if not transcript:
+        transcript = next(iter(transcripts.keys()))  # Take first transcript
 
-    exon_list = gene_transcripts[transcript]
+    if transcript not in transcripts:
+        return []
+
+    exon_list = transcripts[transcript]
     hit_exons = []
 
     for exon in exon_list:
-        exon_start = exon["start"]
-        exon_end = exon["end"]
+        exon_start = exon.get("start")
+        exon_end = exon.get("end")
+        exon_number = exon.get("exon")
 
-        # Check for overlap
-        if end < exon_start or start > exon_end:
+        if exon_start is None or exon_end is None:
             continue
-        hit_exons.append(exon["exon"])
 
-    return [
-        {
-            "transcript": transcript,
-            "hit_exons": hit_exons,
-            "cnv_type": cnv_type,
-            "predicted_consequence": None,  # To be filled by functional_predictor
-        }
-    ]
+        # Check overlap
+        if end >= exon_start and start <= exon_end:
+            hit_exons.append(exon_number)
+
+    return [{
+        "transcript": transcript,
+        "hit_exons": hit_exons,
+        "cnv_type": cnv_type,
+        "predicted_consequence": None
+    }]
 
 
-def map_exon_numbers_to_regions(gene, transcript, first_exon, last_exon, mane_data):
+def map_exon_numbers_to_regions(
+    gene: str,
+    transcript: str,
+    first_exon: int,
+    last_exon: int,
+    mane_data: Dict[str, Dict[str, List[Dict[str, Any]]]]
+) -> Optional[Tuple[int, int]]:
     """
     Convert a range of exon numbers to genomic coordinates.
 
@@ -62,19 +82,23 @@ def map_exon_numbers_to_regions(gene, transcript, first_exon, last_exon, mane_da
     Returns:
         tuple (start, end) genomic coordinates, or None if invalid exon numbers
     """
-    if gene not in mane_data or transcript not in mane_data[gene]:
+    if gene not in mane_data:
+        return None
+    if transcript not in mane_data[gene]:
         return None
 
     exon_list = mane_data[gene][transcript]
 
-    # Filter only exons in range
-    selected = [e for e in exon_list if e["exon"] is not None and first_exon <= e["exon"] <= last_exon]
+    # Select exons within the specified range
+    selected_exons = [
+        e for e in exon_list
+        if e.get("exon") is not None and first_exon <= e["exon"] <= last_exon
+    ]
 
-    if not selected:
+    if not selected_exons:
         return None
 
-    # Genomic start is the smallest start, end is largest end
-    genomic_start = min(e["start"] for e in selected)
-    genomic_end = max(e["end"] for e in selected)
+    genomic_start = min(e["start"] for e in selected_exons if e.get("start") is not None)
+    genomic_end = max(e["end"] for e in selected_exons if e.get("end") is not None)
 
     return genomic_start, genomic_end
