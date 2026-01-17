@@ -64,6 +64,7 @@ CODING CONCEPTS & PRINCIPLES:
     CSS Variables (--teal, etc.) allow easy theme customization.
     All colors reference these variables for consistency.
     -->
+    
     <style>
         /* CSS Variables: Define theme colors once, use everywhere */
         :root {
@@ -72,6 +73,7 @@ CODING CONCEPTS & PRINCIPLES:
             --teal-glow: rgba(0,200,255,0.88); /* glow effect for shadows */
             --teal-dim: rgba(0,200,255,0.12); /* subtle background tint */
         }
+    
 
         body {
             background-color: #0d0f12;
@@ -434,72 +436,145 @@ PAGE STRUCTURE:
     </h3>
 
     <div class="collapse" id="examplesCollapse">
-        <div class="mt-2">
-            {% for ex in examples %}
-            <div class="result-item" style="opacity: 0.9;">
+        <div class="card-dark results-box mt-2">
+            <!-- Example 1: BRCA1 Deletion -->
+            <div class="result-item">
                 <div class="result-header">
                     <div style="margin-bottom: 8px;">
-                        <strong>Gene:</strong> {{ ex.gene }}
+                        <strong>Gene:</strong> BRCA1
                     </div>
                     <div style="margin-bottom: 8px;">
-                        <strong>CNV Type:</strong> {{ ex.type|capitalize }}
+                        <strong>Transcript:</strong> NM_007294.4
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong>Chromosome:</strong> 17 (GRCh38)
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong>ISCN Notation:</strong> <code style="color: var(--teal); font-size: 1.1em;">arr[GRCh38] 17q21.31(43,091,435-43,106,614)x1</code>
                     </div>
                     <div>
-                        <strong>Mode:</strong> 
-                        {% if ex.start is defined and ex.end is defined %}
-                            Genomic Coordinates
-                        {% elif ex.first_exon is defined and ex.last_exon is defined %}
-                            Exon Numbers
-                        {% endif %}
+                        <strong>Consequence:</strong> Loss of function (deletion of exons 5-13)
                     </div>
                 </div>
                 
-                {% if ex.start is defined and ex.end is defined %}
-                    <div style="margin-top: 15px;">
-                        <strong style="color: var(--teal); margin-bottom: 10px; display: block;">Genomic Coordinates:</strong>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Chromosome</th>
-                                    <th>Build</th>
-                                    <th>Start</th>
-                                    <th>End</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>{{ ex.chromosome }}</td>
-                                    <td>{{ ex.build }}</td>
-                                    <td>{{ ex.start }}</td>
-                                    <td>{{ ex.end }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                <div style="margin-top: 15px;">
+                    <strong style="color: var(--teal); margin-bottom: 10px; display: block;">Exons Hit:</strong>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Exon Number</th>
+                                <th>Length (bp)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>5</td><td>181</td></tr>
+                            <tr><td>6</td><td>134</td></tr>
+                            <tr><td>7</td><td>149</td></tr>
+                            <tr><td>8</td><td>156</td></tr>
+                            <tr><td>9</td><td>141</td></tr>
+                            <tr><td>10</td><td>3758</td></tr>
+                            <tr><td>11</td><td>3607</td></tr>
+                            <tr><td>12</td><td>183</td></tr>
+                            <tr><td>13</td><td>231</td></tr>
+                        </tbody>
+                    </table>
+                    <div style="margin-top:8px; color:#aad; font-weight:600;">
+                        Total length (bp): <span style="color:var(--teal)">8540</span>
+                        <span style="margin-left:22px;">Amino acid check (total/3): <span style="color:var(--teal)">2846.67</span></span>
                     </div>
-                {% elif ex.first_exon is defined and ex.last_exon is defined %}
-                    <div style="margin-top: 15px;">
-                        <strong style="color: var(--teal); margin-bottom: 10px; display: block;">Exon Range:</strong>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>First Exon</th>
-                                    <th>Last Exon</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>{{ ex.first_exon }}</td>
-                                    <td>{{ ex.last_exon }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                {% endif %}
+                </div>
             </div>
-            {% endfor %}
+
+            <!-- Example 2: TP53 Deletion -->
+            <div class="result-item">
+                <div class="result-header">
+                    <div style="margin-bottom: 8px;">
+                        <strong>Gene:</strong> TP53
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong>Transcript:</strong> NM_000546.6
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong>Chromosome:</strong> 17 (GRCh38)
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong>ISCN Notation:</strong> <code style="color: var(--teal); font-size: 1.1em;">arr[GRCh38] 17p13.1(7,668,402-7,676,594)x1</code>
+                    </div>
+                    <div>
+                        <strong>Consequence:</strong> Loss of function (deletion of exons 4-8)
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px;">
+                    <strong style="color: var(--teal); margin-bottom: 10px; display: block;">Exons Hit:</strong>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Exon Number</th>
+                                <th>Length (bp)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>4</td><td>215</td></tr>
+                            <tr><td>5</td><td>178</td></tr>
+                            <tr><td>6</td><td>117</td></tr>
+                            <tr><td>7</td><td>138</td></tr>
+                            <tr><td>8</td><td>199</td></tr>
+                        </tbody>
+                    </table>
+                    <div style="margin-top:8px; color:#aad; font-weight:600;">
+                        Total length (bp): <span style="color:var(--teal)">847</span>
+                        <span style="margin-left:22px;">Amino acid check (total/3): <span style="color:var(--teal)">282.33</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Example 3: DMD Duplication -->
+            <div class="result-item">
+                <div class="result-header">
+                    <div style="margin-bottom: 8px;">
+                        <strong>Gene:</strong> DMD
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong>Transcript:</strong> NM_004006.3
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong>Chromosome:</strong> X (GRCh38)
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong>ISCN Notation:</strong> <code style="color: var(--teal); font-size: 1.1em;">arr[GRCh38] Xp21.1(31,119,222-31,781,441)x2</code>
+                    </div>
+                    <div>
+                        <strong>Consequence:</strong> In-frame duplication (exons 45-50)
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px;">
+                    <strong style="color: var(--teal); margin-bottom: 10px; display: block;">Exons Hit:</strong>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Exon Number</th>
+                                <th>Length (bp)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>45</td><td>178</td></tr>
+                            <tr><td>46</td><td>143</td></tr>
+                            <tr><td>47</td><td>163</td></tr>
+                            <tr><td>48</td><td>173</td></tr>
+                            <tr><td>49</td><td>177</td></tr>
+                            <tr><td>50</td><td>109</td></tr>
+                        </tbody>
+                    </table>
+                    <div style="margin-top:8px; color:#aad; font-weight:600;">
+                        Total length (bp): <span style="color:var(--teal)">943</span>
+                        <span style="margin-left:22px;">Amino acid check (total/3): <span style="color:var(--teal)">314.33</span></span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-
 </div>
 
 <!--
@@ -511,12 +586,9 @@ This script handles:
 2. Mode selection (show/hide appropriate form fields)
 ===============================================================================
 -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-// ============================================================================
-// EXAMPLES SECTION: Animate arrow icon when expanding/collapsing
-// ============================================================================
-const examplesCollapse = document.getElementById("examplesCollapse");
 // ============================================================================
 // EXAMPLES SECTION: Animate arrow icon when expanding/collapsing
 // ============================================================================
@@ -535,46 +607,28 @@ examplesCollapse.addEventListener("hide.bs.collapse", () => {
 // ============================================================================
 // MODE SELECTION: Show/hide form fields based on selected input mode
 // ============================================================================
-// Get references to DOM elements
 const modeSelect = document.querySelector('select[name="mode"]');
 const coordFields = document.getElementById('coordinate-fields');
 const exonFields = document.getElementById('exon-fields');
 
-/**
- * Update which input fields are visible based on selected mode.
- * 
- * This function:
- * 1. Hides all mode-specific fields
- * 2. Shows only the fields for the selected mode
- * 
- * This provides a cleaner UI - users only see relevant fields.
- */
 function updateModeFields() {
     const mode = modeSelect.value;
     
-    // Hide all mode fields
     coordFields.style.display = 'none';
     exonFields.style.display = 'none';
-    // Remove required attribute from all conditional fields first
     coordFields.querySelectorAll('input, select').forEach(f => f.required = false);
     exonFields.querySelectorAll('input, select').forEach(f => f.required = false);
 
-    // Show and set required only for the intended fields
     if (mode === 'coordinate') {
         coordFields.style.display = 'block';
-        // Only require coordinate fields
         coordFields.querySelectorAll('input, select').forEach(f => f.required = true);
     } else if (mode === 'exon') {
         exonFields.style.display = 'block';
-        // Only require exon fields
         exonFields.querySelectorAll('input, select').forEach(f => f.required = true);
     }
 }
 
-// Listen for mode selection changes and update fields accordingly
 modeSelect.addEventListener('change', updateModeFields);
-
-// Initialize on page load (show default mode fields)
 updateModeFields();
 </script>
 
