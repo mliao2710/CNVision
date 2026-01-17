@@ -1,0 +1,582 @@
+<!--
+================================================================================
+INDEX.HTML - CNVision Web Application Frontend Template
+================================================================================
+
+PURPOSE:
+--------
+This is the user-facing web interface for CNVision. It provides a modern,
+interactive web form where users can input CNV data and view analysis results.
+
+BIOLOGICAL IMPACT:
+------------------
+A well-designed interface makes CNVision accessible to clinicians and researchers
+who may not be comfortable with command-line tools. The visual presentation of
+results (especially the exon hit tables) helps users quickly understand the
+biological implications of CNVs.
+
+CODING CONCEPTS & PRINCIPLES:
+------------------------------
+1. TEMPLATE ENGINE (Jinja2):
+   - Flask uses Jinja2 to inject Python data into HTML
+   - Double curly braces display Python variables
+   - Percent-brace syntax provides control flow (if/for loops)
+   - Allows dynamic content generation
+
+2. RESPONSIVE DESIGN:
+   - Bootstrap CSS framework for mobile-friendly layout
+   - CSS Grid/Flexbox for flexible layouts
+   - Media queries adapt to different screen sizes
+
+3. JAVASCRIPT:
+   - DOM manipulation (show/hide form fields)
+   - Event listeners (mode selection, examples toggle)
+   - Dynamic UI updates without page reload
+
+4. CSS VARIABLES:
+   - :root defines theme colors
+   - Easy to change entire color scheme
+   - Consistent styling throughout
+
+5. ACCESSIBILITY:
+   - Semantic HTML (proper heading hierarchy)
+   - Form labels associated with inputs
+   - Keyboard navigation support
+
+================================================================================
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CNVision Web</title>
+<!-- Bootstrap CSS: Provides responsive grid system and pre-styled components -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Exo 2 Font: Modern, readable font for scientific content -->
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <!--
+    ============================================================================
+    CSS STYLING: Dark theme with teal accents
+    ============================================================================
+    CSS Variables (--teal, etc.) allow easy theme customization.
+    All colors reference these variables for consistency.
+    -->
+    <style>
+        /* CSS Variables: Define theme colors once, use everywhere */
+        :root {
+            --teal: #00c8ff; /* bright teal-blue - primary accent color */
+            --teal-strong: #00b7e6; /* darker teal for hover states */
+            --teal-glow: rgba(0,200,255,0.88); /* glow effect for shadows */
+            --teal-dim: rgba(0,200,255,0.12); /* subtle background tint */
+        }
+
+        body {
+            background-color: #0d0f12;
+            color: #e0e0e0;
+            font-family: "Exo 2", sans-serif;
+        }
+
+        .logo {
+            position: absolute;
+            top: 20px;
+            left: 25px;
+            width: 150px;
+            height: auto;
+            filter: drop-shadow(0 0 14px var(--teal-glow));
+            animation: pulseGlow 3s infinite ease-in-out;
+        }
+
+        @keyframes pulseGlow {
+            0% { filter: drop-shadow(0 0 8px var(--teal-glow)); }
+            50% { filter: drop-shadow(0 0 20px var(--teal-glow)); }
+            100% { filter: drop-shadow(0 0 8px var(--teal-glow)); }
+        }
+
+        h1 {
+            color: var(--teal);
+            font-weight: 700;
+            text-shadow: 0 0 18px var(--teal-glow);
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .subheading {
+            color: #cfeff8;
+            font-size: 1.15rem;
+            text-align: center;
+            margin-bottom: 35px;
+            opacity: 0.95;
+            text-shadow: 0 0 8px var(--teal-dim);
+        }
+
+        h3 {
+            color: var(--teal);
+            margin-top: 30px;
+            font-weight: 600;
+            text-shadow: 0 0 10px var(--teal-glow);
+        }
+
+        .card-dark {
+            background-color: #15181d;
+            border: 1px solid #1f242d;
+            border-radius: 15px;
+            padding: 22px;
+            box-shadow: 0 0 20px var(--teal-dim);
+            backdrop-filter: blur(4px);
+        }
+
+        .results-box {
+            background-color: #111419;
+            border-left: 4px solid var(--teal);
+            box-shadow: 0 0 14px rgba(0, 240, 255, 0.12);
+        }
+
+        .examples-box {
+            background-color: #151a20;
+            border-left: 4px solid var(--teal-strong);
+            color: #cdd9e5;
+            box-shadow: 0 0 14px rgba(86, 156, 214, 0.06);
+        }
+
+        .result-banner {
+            background: linear-gradient(90deg, rgba(0,200,255,0.12), rgba(0,200,255,0.22));
+            border: 1px solid rgba(0,200,255,0.36);
+            padding: 12px 15px;
+            border-radius: 10px;
+            text-align: center;
+            color: #dff8ff;
+            font-weight: 600;
+            margin-bottom: 20px;
+            opacity: 1;
+            animation: fadeOut 3.5s forwards ease-in-out, glowPulse 2.5s infinite;
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            60% { opacity: 1; }
+            100% { opacity: 0; display: none; }
+        }
+
+        @keyframes glowPulse {
+            0% { box-shadow: 0 0 8px rgba(0,200,255,0.12); }
+            50% { box-shadow: 0 0 16px rgba(0,200,255,0.18); }
+            100% { box-shadow: 0 0 8px rgba(0,200,255,0.12); }
+        }
+
+        input, select {
+            background-color: #0f1216 !important;
+            color: #ffffff !important;
+            border: 1px solid #28323f !important;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--teal-strong) !important;
+            box-shadow: 0 0 7px rgba(0,183,255,0.6) !important;
+        }
+
+        /* Teal-blue primary button styling */
+        .btn-primary {
+            background-color: var(--teal);
+            border-color: var(--teal-strong);
+            color: #042027;
+            font-weight: 700;
+            box-shadow: 0 6px 20px rgba(0,200,255,0.18), 0 0 12px var(--teal-glow);
+        }
+
+        .btn-primary:hover, .btn-primary:focus {
+            background-color: var(--teal-strong);
+            border-color: var(--teal);
+            box-shadow: 0 8px 26px rgba(0,200,255,0.22), 0 0 18px var(--teal-glow);
+            color: #001419;
+        }
+
+        table {
+            background-color: #0f1216;
+            color: #e0e0e0;
+            border-collapse: separate;
+            border-spacing: 0;
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        table thead th {
+            background-color: #1a1e24;
+            color: var(--teal);
+            font-weight: 600;
+            border-bottom: 2px solid var(--teal-strong);
+            padding: 12px;
+            text-align: left;
+        }
+
+        table tbody td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #28323f;
+        }
+
+        table tbody tr:hover {
+            background-color: #151a20;
+        }
+
+        table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .result-item {
+            background-color: #111419;
+            border-left: 4px solid var(--teal);
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+
+        .result-header {
+            margin-bottom: 15px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #28323f;
+        }
+
+        .result-header strong {
+            color: var(--teal);
+            margin-right: 8px;
+        }
+    </style>
+</head>
+
+<body>
+<!--
+===============================================================================
+PAGE STRUCTURE:
+- Logo (top left)
+- Header with title and subtitle
+- Success banner (shown after form submission)
+- Input form (CNV data entry)
+- Results section (analysis output)
+- Examples section (collapsible)
+===============================================================================
+-->
+
+<!-- Logo: Positioned absolutely in top-left corner with glow animation -->
+<img src="{{ url_for('static', filename='logo.png') }}" alt="CNVision Logo" class="logo">
+
+<!-- Main container: Bootstrap's container class centers content and adds padding -->
+<div class="container py-5">
+    <!-- Page title -->
+    <h1>CNVision</h1>
+    <!-- Subtitle: Explains what the tool does -->
+    <p class="subheading">
+        <strong>A Computational Framework to Predict Functional Impact of Intragenic Copy Number Variants</strong>
+    </p>
+
+    <!--
+    ============================================================================
+    SUCCESS BANNER: Shown when result and result length greater than 0
+    ============================================================================
+    Jinja2 template syntax:
+    - Percent-brace if statement checks if condition is true
+    - result|length gets length of result list
+    - Only displays if results exist
+    -->
+    {% if result and result|length > 0 %}
+    <div class="result-banner" id="resultBanner">
+        ✅ CNV Successfully Analyzed — Scroll Down to View Results
+    </div>
+    {% endif %}
+
+    <!--
+    ============================================================================
+    INPUT FORM: Where users enter CNV data
+    ============================================================================
+    method="POST" sends form data to server when submitted
+    Flask route receives this data via request.form
+    -->
+    <div class="card-dark">
+        <form method="POST" class="mb-4">
+            <h3>CNV Input</h3>
+
+            <div class="mb-3">
+                <label for="gene" class="form-label">Gene or RNA Transcript:</label>
+                <input type="text" class="form-control" id="gene" name="gene_input" required>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">CNV Type:</label>
+                <select class="form-select" name="cnv_type" required>
+                    <option value="deletion">Deletion</option>
+                    <option value="duplication">Duplication</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Mode:</label>
+                <select class="form-select" name="mode" id="mode-select" required>
+                    <option value="exon" selected>Exon Numbers</option>
+                    <option value="coordinate">Genomic Coordinates</option>
+                </select>
+            </div>
+
+            <!--
+            ====================================================================
+            CONDITIONAL INPUT FIELDS: Shown/hidden based on selected mode
+            ====================================================================
+            JavaScript (at bottom) controls visibility via display:none/block
+            Each mode has its own set of fields
+            -->
+            
+            <!-- Genomic coordinate mode fields (includes ISCN fields) -->
+            <div class="mb-3" id="coordinate-fields" style="display:none;">
+                <label class="form-label">Chromosome:</label>
+                <input type="text" class="form-control" name="chromosome" placeholder="e.g., 17, X, Y">
+                <label class="form-label mt-2">Genomic Build:</label>
+                <select class="form-select" name="build">
+                    <option value="GRCh38" selected>GRCh38</option>
+                    <option value="GRCh37">GRCh37</option>
+                </select>
+                <label class="form-label mt-2">Start coordinate:</label>
+                <input type="number" class="form-control" name="start">
+                <label class="form-label mt-2">End coordinate:</label>
+                <input type="number" class="form-control" name="end">
+            </div>
+
+            <!-- Exon number mode fields (default, shown by default) -->
+            <div class="mb-3" id="exon-fields">
+                <label class="form-label">First exon:</label>
+                <input type="number" class="form-control" name="first_exon">
+                <label class="form-label mt-2">Last exon:</label>
+                <input type="number" class="form-control" name="last_exon">
+            </div>
+
+            <button type="submit" class="btn btn-primary">Analyze CNV</button>
+        </form>
+    </div>
+
+    <h3>Results</h3>
+    <div class="card-dark results-box mb-4">
+        {% if result and result|length > 0 %}
+            {% for r in result %}
+            <div class="result-item">
+                {% if r.error %}
+                    <div style="color: #ff6b6b; padding: 10px;">{{ r.error }}</div>
+                {% else %}
+                    <div class="result-header">
+                        <div style="margin-bottom: 8px;">
+                            <strong>Gene:</strong> {{ r.gene }}
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <strong>Transcript:</strong> {{ r.transcript }}
+                        </div>
+                        {% if r.iscn_chromosome is defined and r.iscn_chromosome and r.iscn_build %}
+                        <div style="margin-bottom: 8px;">
+                            <strong>Chromosome:</strong> {{ r.iscn_chromosome }} ({{ r.iscn_build }})
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <strong>ISCN Notation:</strong> <code style="color: var(--teal); font-size: 1.1em;">{{ r.iscn_notation }}</code>
+                        </div>
+                        {% endif %}
+                        <div>
+                            <strong>Consequence:</strong> {{ r.predicted_consequence }}
+                        </div>
+                    </div>
+                    
+                    {% if r.hit_exons and r.hit_exons|length > 0 %}
+                        <div style="margin-top: 15px;">
+                            <strong style="color: var(--teal); margin-bottom: 10px; display: block;">Exons Hit:</strong>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Exon Number</th>
+                                        <th>Length (bp)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for exon in r.hit_exons %}
+                                    <tr>
+                                        {% if exon is mapping %}
+                                            <td>{{ exon.exon }}</td>
+                                            <td>{{ exon.length if exon.length is defined else 'N/A' }}</td>
+                                        {% else %}
+                                            <td>{{ exon }}</td>
+                                            <td>N/A</td>
+                                        {% endif %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% set total_length = r.hit_exons|map(attribute='length')|select('number')|sum %}
+                            <div style="margin-top:8px; color:#aad; font-weight:600;">
+                              Total length (bp): <span style="color:var(--teal)">{{ total_length }}</span>
+                              <span style="margin-left:22px;">Amino acid check (total/3): <span style="color:var(--teal)">{{ (total_length / 3)|round(2) }}</span></span>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div style="margin-top: 15px; color: #888;">
+                            <strong style="color: var(--teal);">Exons Hit:</strong> None
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="result-item">
+                <div style="color: #888; padding: 10px;">No results to display.</div>
+            </div>
+        {% endif %}
+    </div>
+
+    <h3 id="examplesToggle" style="cursor:pointer; display:flex; align-items:center; gap:10px;"
+        data-bs-toggle="collapse" data-bs-target="#examplesCollapse">
+        <span>Examples</span>
+        <span id="arrowIcon" style="transition: transform 0.3s ease;">&#9656;</span>
+    </h3>
+
+    <div class="collapse" id="examplesCollapse">
+        <div class="mt-2">
+            {% for ex in examples %}
+            <div class="result-item" style="opacity: 0.9;">
+                <div class="result-header">
+                    <div style="margin-bottom: 8px;">
+                        <strong>Gene:</strong> {{ ex.gene }}
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong>CNV Type:</strong> {{ ex.type|capitalize }}
+                    </div>
+                    <div>
+                        <strong>Mode:</strong> 
+                        {% if ex.start is defined and ex.end is defined %}
+                            Genomic Coordinates
+                        {% elif ex.first_exon is defined and ex.last_exon is defined %}
+                            Exon Numbers
+                        {% endif %}
+                    </div>
+                </div>
+                
+                {% if ex.start is defined and ex.end is defined %}
+                    <div style="margin-top: 15px;">
+                        <strong style="color: var(--teal); margin-bottom: 10px; display: block;">Genomic Coordinates:</strong>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Chromosome</th>
+                                    <th>Build</th>
+                                    <th>Start</th>
+                                    <th>End</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>{{ ex.chromosome }}</td>
+                                    <td>{{ ex.build }}</td>
+                                    <td>{{ ex.start }}</td>
+                                    <td>{{ ex.end }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                {% elif ex.first_exon is defined and ex.last_exon is defined %}
+                    <div style="margin-top: 15px;">
+                        <strong style="color: var(--teal); margin-bottom: 10px; display: block;">Exon Range:</strong>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>First Exon</th>
+                                    <th>Last Exon</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>{{ ex.first_exon }}</td>
+                                    <td>{{ ex.last_exon }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+<!--
+===============================================================================
+JAVASCRIPT: Dynamic UI behavior
+===============================================================================
+This script handles:
+1. Examples section expand/collapse animation
+2. Mode selection (show/hide appropriate form fields)
+===============================================================================
+-->
+
+<script>
+// ============================================================================
+// EXAMPLES SECTION: Animate arrow icon when expanding/collapsing
+// ============================================================================
+const examplesCollapse = document.getElementById("examplesCollapse");
+// ============================================================================
+// EXAMPLES SECTION: Animate arrow icon when expanding/collapsing
+// ============================================================================
+const examplesCollapse = document.getElementById("examplesCollapse");
+const arrowIcon = document.getElementById("arrowIcon");
+
+// Rotate arrow 90 degrees when examples section opens
+examplesCollapse.addEventListener("show.bs.collapse", () => {
+    arrowIcon.style.transform = "rotate(90deg)";
+});
+// Rotate arrow back when examples section closes
+examplesCollapse.addEventListener("hide.bs.collapse", () => {
+    arrowIcon.style.transform = "rotate(0deg)";
+});
+
+// ============================================================================
+// MODE SELECTION: Show/hide form fields based on selected input mode
+// ============================================================================
+// Get references to DOM elements
+const modeSelect = document.querySelector('select[name="mode"]');
+const coordFields = document.getElementById('coordinate-fields');
+const exonFields = document.getElementById('exon-fields');
+
+/**
+ * Update which input fields are visible based on selected mode.
+ * 
+ * This function:
+ * 1. Hides all mode-specific fields
+ * 2. Shows only the fields for the selected mode
+ * 
+ * This provides a cleaner UI - users only see relevant fields.
+ */
+function updateModeFields() {
+    const mode = modeSelect.value;
+    
+    // Hide all mode fields
+    coordFields.style.display = 'none';
+    exonFields.style.display = 'none';
+    // Remove required attribute from all conditional fields first
+    coordFields.querySelectorAll('input, select').forEach(f => f.required = false);
+    exonFields.querySelectorAll('input, select').forEach(f => f.required = false);
+
+    // Show and set required only for the intended fields
+    if (mode === 'coordinate') {
+        coordFields.style.display = 'block';
+        // Only require coordinate fields
+        coordFields.querySelectorAll('input, select').forEach(f => f.required = true);
+    } else if (mode === 'exon') {
+        exonFields.style.display = 'block';
+        // Only require exon fields
+        exonFields.querySelectorAll('input, select').forEach(f => f.required = true);
+    }
+}
+
+// Listen for mode selection changes and update fields accordingly
+modeSelect.addEventListener('change', updateModeFields);
+
+// Initialize on page load (show default mode fields)
+updateModeFields();
+</script>
+
+</body>
+</html>
