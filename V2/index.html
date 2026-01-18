@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CNVision Web</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --teal: #00c8ff;
+            --teal-strong: #00b7e6;
+            --teal-glow: rgba(0,200,255,0.88);
+            --teal-dim: rgba(0,200,255,0.12);
+        }
+    
+        body {
+            background-color: #0d0f12;
+            color: #e0e0e0;
+            font-family: "Exo 2", sans-serif;
+        }
+
+        .logo {
+            position: absolute;
+            top: 20px;
+            left: 25px;
+            width: 150px;
+            height: auto;
+            filter: drop-shadow(0 0 14px var(--teal-glow));
+            animation: pulseGlow 3s infinite ease-in-out;
+        }
+
+        @keyframes pulseGlow {
+            0% { filter: drop-shadow(0 0 8px var(--teal-glow)); }
+            50% { filter: drop-shadow(0 0 20px var(--teal-glow)); }
+            100% { filter: drop-shadow(0 0 8px var(--teal-glow)); }
+        }
+
+        h1 {
+            color: var(--teal);
+            font-weight: 700;
+            text-shadow: 0 0 18px var(--teal-glow);
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .subheading {
+            color: #cfeff8;
+            font-size: 1.15rem;
+            text-align: center;
+            margin-bottom: 35px;
+            opacity: 0.95;
+            text-shadow: 0 0 8px var(--teal-dim);
+        }
+
+        h3 {
+            color: var(--teal);
+            margin-top: 30px;
+            font-weight: 600;
+            text-shadow: 0 0 10px var(--teal-glow);
+        }
+
+        .card-dark {
+            background-color: #15181d;
+            border: 1px solid #1f242d;
+            border-radius: 15px;
+            padding: 22px;
+            box-shadow: 0 0 20px var(--teal-dim);
+            backdrop-filter: blur(4px);
+        }
+
+        .results-box {
+            background-color: #111419;
+            border-left: 4px solid var(--teal);
+            box-shadow: 0 0 14px rgba(0, 240, 255, 0.12);
+        }
+
+        .result-banner {
+            background: linear-gradient(90deg, rgba(0,200,255,0.12), rgba(0,200,255,0.22));
+            border: 1px solid rgba(0,200,255,0.36);
+            padding: 12px 15px;
+            border-radius: 10px;
+            text-align: center;
+            color: #dff8ff;
+            font-weight: 600;
+            margin-bottom: 20px;
+            opacity: 1;
+            animation: fadeOut 3.5s forwards ease-in-out, glowPulse 2.5s infinite;
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            60% { opacity: 1; }
+            100% { opacity: 0; display: none; }
+        }
+
+        @keyframes glowPulse {
+            0% { box-shadow: 0 0 8px rgba(0,200,255,0.12); }
+            50% { box-shadow: 0 0 16px rgba(0,200,255,0.18); }
+            100% { box-shadow: 0 0 8px rgba(0,200,255,0.12); }
+        }
+
+        input, select, textarea {
+            background-color: #0f1216 !important;
+            color: #ffffff !important;
+            border: 1px solid #28323f !important;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--teal-strong) !important;
+            box-shadow: 0 0 7px rgba(0,183,255,0.6) !important;
+        }
+
+        .btn-primary {
+            background-color: var(--teal);
+            border-color: var(--teal-strong);
+            color: #042027;
+            font-weight: 700;
+            box-shadow: 0 6px 20px rgba(0,200,255,0.18), 0 0 12px var(--teal-glow);
+        }
+
+        .btn-primary:hover, .btn-primary:focus {
+            background-color: var(--teal-strong);
+            border-color: var(--teal);
+            box-shadow: 0 8px 26px rgba(0,200,255,0.22), 0 0 18px var(--teal-glow);
+            color: #001419;
+        }
+
+        table {
+            background-color: #0f1216;
+            color: #e0e0e0;
+            border-collapse: separate;
+            border-spacing: 0;
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        table thead th {
+            background-color: #1a1e24;
+            color: var(--teal);
+            font-weight: 600;
+            border-bottom: 2px solid var(--teal-strong);
+            padding: 12px;
+            text-align: left;
+        }
+
+        table tbody td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #28323f;
+        }
+
+        table tbody tr:hover {
+            background-color: #151a20;
+        }
+
+        table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .result-item {
+            background-color: #111419;
+            border-left: 4px solid var(--teal);
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+
+        .result-header {
+            margin-bottom: 15px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #28323f;
+        }
+
+        .result-header strong {
+            color: var(--teal);
+            margin-right: 8px;
+        }
+
+        .help-text {
+            font-size: 0.85rem;
+            color: #88a;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+
+<body>
+<img src="{{ url_for('static', filename='logo.png') }}" alt="CNVision Logo" class="logo">
+
+<div class="container py-5">
+    <h1>CNVision</h1>
+    <p class="subheading">
+        <strong>A Computational Framework to Predict Functional Impact of Intragenic Copy Number Variants</strong>
+    </p>
+
+    {% if result and result|length > 0 %}
+    <div class="result-banner">
+        ✅ CNV Successfully Analyzed — Scroll Down to View Results
+    </div>
+    {% endif %}
+
+    <div class="card-dark">
+        <form method="POST" class="mb-4">
+            <h3>CNV Input</h3>
+
+            <div class="mb-3">
+                <label class="form-label">Input Mode:</label>
+                <select class="form-select" name="mode" id="mode-select" required>
+                    <option value="exon" selected>Exon Numbers</option>
+                    <option value="transcript">Transcript/cDNA Notation</option>
+                    <option value="coordinate">Genomic Coordinates</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">CNV Type:</label>
+                <select class="form-select" name="cnv_type" required>
+                    <option value="deletion">Deletion</option>
+                    <option value="duplication">Duplication</option>
+                </select>
+            </div>
+
+            <!-- EXON MODE -->
+            <div id="exon-fields">
+                <div class="mb-3">
+                    <label for="gene" class="form-label">Gene Symbol:</label>
+                    <input type="text" class="form-control" name="gene_input" placeholder="e.g., FBN1">
+                    <div class="help-text">Enter gene symbol (e.g., FBN1, BRCA1)</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">First Exon:</label>
+                    <input type="number" class="form-control" name="first_exon" placeholder="e.g., 42">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Last Exon:</label>
+                    <input type="number" class="form-control" name="last_exon" placeholder="e.g., 45">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Start Position (optional):</label>
+                    <input type="text" class="form-control" name="exon_start_pos" placeholder="1 = first base, -1 = last base, leave empty for whole exon">
+                    <div class="help-text">Optional: 1 = first position, -1 = last position</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">End Position (optional):</label>
+                    <input type="text" class="form-control" name="exon_end_pos" placeholder="1 = first base, -1 = last base, leave empty for whole exon">
+                    <div class="help-text">Optional: 1 = first position, -1 = last position</div>
+                </div>
+            </div>
+
+            <!-- TRANSCRIPT MODE -->
+            <div id="transcript-fields" style="display:none;">
+                <div class="mb-3">
+                    <label class="form-label">cDNA Notation:</label>
+                    <textarea class="form-control" name="cdna_notation" rows="3" placeholder="Examples:&#10;FBN1:c.5065_5546del&#10;c.(5065+1_5066-1)_(5545+1_5546-1)&#10;NM_001406716.1:c.5065_5546del"></textarea>
+                    <div class="help-text">
+                        Enter HGVS cDNA notation (c. notation)<br>
+                        Examples: FBN1:c.5065_5546del or NM_001406716.1:c.5065_5546del
+                    </div>
+                </div>
+            </div>
+
+            <!-- GENOMIC COORDINATE MODE -->
+            <div id="coordinate-fields" style="display:none;">
+                <div class="mb-3">
+                    <label class="form-label">Input Format:</label>
+                    <textarea class="form-control" name="genomic_input" rows="3" placeholder="Examples:&#10;DEL chr15:48,741,090-48,756,096&#10;arr[GRCh37]15q21.1(48,741,090_48,756,096)x1"></textarea>
+                    <div class="help-text">
+                        Enter genomic coordinates or ISCN notation<br>
+                        Examples: DEL chr15:48,741,090-48,756,096 or arr[GRCh37]15q21.1(48,741,090_48,756,096)x1
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Genomic Build:</label>
+                    <select class="form-select" name="build">
+                        <option value="GRCh38" selected>GRCh38/hg38</option>
+                        <option value="GRCh37">GRCh37/hg19</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Gene (optional):</label>
+                    <input type="text" class="form-control" name="gene_hint" placeholder="e.g., FBN1">
+                    <div class="help-text">Optional: helps identify the gene if not auto-detected</div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Analyze CNV</button>
+        </form>
+    </div>
+
+    <h3>Results</h3>
+    <div class="card-dark results-box mb-4">
+        {% if result and result|length > 0 %}
+            {% for r in result %}
+            <div class="result-item">
+                {% if r.error %}
+                    <div style="color: #ff6b6b; padding: 10px;">{{ r.error }}</div>
+                {% else %}
+                    <div class="result-header">
+                        <div style="margin-bottom: 8px;">
+                            <strong>Gene:</strong> {{ r.gene }}
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <strong>Transcript:</strong> {{ r.transcript }}
+                        </div>
+                        {% if r.iscn_chromosome is defined and r.iscn_chromosome and r.iscn_build %}
+                        <div style="margin-bottom: 8px;">
+                            <strong>Chromosome:</strong> {{ r.iscn_chromosome }} ({{ r.iscn_build }})
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <strong>ISCN Notation:</strong> <code style="color: var(--teal); font-size: 1.1em;">{{ r.iscn_notation }}</code>
+                        </div>
+                        {% endif %}
+                        <div>
+                            <strong>Consequence:</strong> {{ r.predicted_consequence }}
+                        </div>
+                    </div>
+                    
+                    {% if r.hit_exons and r.hit_exons|length > 0 %}
+                        <div style="margin-top: 15px;">
+                            <strong style="color: var(--teal); margin-bottom: 10px; display: block;">Exons Hit:</strong>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Exon Number</th>
+                                        <th>Length (bp)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for exon in r.hit_exons %}
+                                    <tr>
+                                        {% if exon is mapping %}
+                                            <td>{{ exon.exon }}</td>
+                                            <td>{{ exon.length if exon.length is defined else 'N/A' }}</td>
+                                        {% else %}
+                                            <td>{{ exon }}</td>
+                                            <td>N/A</td>
+                                        {% endif %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% set total_length = r.hit_exons|map(attribute='length')|select('number')|sum %}
+                            <div style="margin-top:8px; color:#aad; font-weight:600;">
+                              Total length (bp): <span style="color:var(--teal)">{{ total_length }}</span>
+                              <span style="margin-left:22px;">Amino acid check (total/3): <span style="color:var(--teal)">{{ (total_length / 3)|round(2) }}</span></span>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div style="margin-top: 15px; color: #888;">
+                            <strong style="color: var(--teal);">Exons Hit:</strong> None
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="result-item">
+                <div style="color: #888; padding: 10px;">No results to display.</div>
+            </div>
+        {% endif %}
+    </div>
+
+    <h3 id="examplesToggle" style="cursor:pointer; display:flex; align-items:center; gap:10px;"
+        data-bs-toggle="collapse" data-bs-target="#examplesCollapse">
+        <span>Examples</span>
+        <span id="arrowIcon" style="transition: transform 0.3s ease;">&#9656;</span>
+    </h3>
+
+    <div class="collapse" id="examplesCollapse">
+        <div class="card-dark results-box mt-2">
+            <div class="result-item">
+                <h5 style="color: var(--teal); margin-bottom: 15px;">Example 1: Exon Mode - FBN1</h5>
+                <p>Gene: FBN1<br>Exons: 42-45<br>Type: Deletion</p>
+            </div>
+            <div class="result-item">
+                <h5 style="color: var(--teal); margin-bottom: 15px;">Example 2: Transcript Mode</h5>
+                <p>FBN1:c.5065_5546del<br>Type: Deletion</p>
+            </div>
+            <div class="result-item">
+                <h5 style="color: var(--teal); margin-bottom: 15px;">Example 3: Genomic Coordinates</h5>
+                <p>DEL chr15:48,741,090-48,756,096<br>Build: GRCh37<br>Type: Deletion</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+const examplesCollapse = document.getElementById("examplesCollapse");
+const arrowIcon = document.getElementById("arrowIcon");
+
+examplesCollapse.addEventListener("show.bs.collapse", () => {
+    arrowIcon.style.transform = "rotate(90deg)";
+});
+examplesCollapse.addEventListener("hide.bs.collapse", () => {
+    arrowIcon.style.transform = "rotate(0deg)";
+});
+
+const modeSelect = document.querySelector('select[name="mode"]');
+const exonFields = document.getElementById('exon-fields');
+const transcriptFields = document.getElementById('transcript-fields');
+const coordFields = document.getElementById('coordinate-fields');
+
+function updateModeFields() {
+    const mode = modeSelect.value;
+    
+    exonFields.style.display = 'none';
+    transcriptFields.style.display = 'none';
+    coordFields.style.display = 'none';
+    
+    exonFields.querySelectorAll('input, select').forEach(f => f.required = false);
+    transcriptFields.querySelectorAll('input, select, textarea').forEach(f => f.required = false);
+    coordFields.querySelectorAll('input, select, textarea').forEach(f => f.required = false);
+
+    if (mode === 'exon') {
+        exonFields.style.display = 'block';
+        exonFields.querySelector('input[name="gene_input"]').required = true;
+        exonFields.querySelector('input[name="first_exon"]').required = true;
+        exonFields.querySelector('input[name="last_exon"]').required = true;
+    } else if (mode === 'transcript') {
+        transcriptFields.style.display = 'block';
+        transcriptFields.querySelector('textarea[name="cdna_notation"]').required = true;
+    } else if (mode === 'coordinate') {
+        coordFields.style.display = 'block';
+        coordFields.querySelector('textarea[name="genomic_input"]').required = true;
+    }
+}
+
+modeSelect.addEventListener('change', updateModeFields);
+updateModeFields();
+</script>
+
+</body>
+</html>
