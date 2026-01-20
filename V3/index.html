@@ -412,9 +412,9 @@
                 <h5 style="color: var(--teal); margin-bottom: 15px;">Example 3: Genomic Coordinates (ISCN/Microarray Format)</h5>
                 <div style="background-color: #0f1216; padding: 15px; border-radius: 8px; border-left: 3px solid var(--teal);">
                     <div style="margin-bottom: 8px;"><strong>Input Mode:</strong> Genomic Coordinates</div>
-                    <div style="margin-bottom: 8px;"><strong>Genomic Input:</strong> <code style="color: var(--teal);">arr[GRCh37]X(32,406,606_32,415,215)x1</code></div>
+                    <div style="margin-bottom: 8px;"><strong>Genomic Input:</strong> <code style="color: var(--teal);">arr[GRCh37]15q21.1(48,741,090_48,756,096)x1</code></div>
                     <div style="margin-bottom: 8px;"><strong>Genomic Build:</strong> GRCh37 <span style="color: #888;">(auto-detected from input)</span></div>
-                    <div style="margin-bottom: 8px;"><strong>Gene (hint):</strong> DMD</div>
+                    <div style="margin-bottom: 8px;"><strong>Gene (hint):</strong> FBN1</div>
                     <div style="margin-bottom: 8px;"><strong>CNV Type:</strong> Deletion <span style="color: #888;">(auto-detected: x1 = deletion)</span></div>
                 </div>
                 <div style="margin-top: 12px; padding: 10px; background-color: #15181d; border-radius: 6px;">
@@ -422,7 +422,8 @@
                         ℹ️ Paste ISCN notation directly from microarray reports. The tool will auto-detect:<br>
                         • Genomic build (GRCh37 vs GRCh38)<br>
                         • CNV type (x1 = deletion, x3 = duplication)<br>
-                        • Chromosome and coordinates
+                        • Chromosome and coordinates<br>
+                        Format: <code>arr[Build]CHROMOSOMEband(start_end)xCOPY</code>
                     </div>
                 </div>
             </div>
