@@ -1,0 +1,11 @@
+[project]
+name = "cnvision"
+version = "0.1.0"
+description = "CNV analysis tools"
+readme = "README.md"
+authors = [{name = "Miles"}]
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
