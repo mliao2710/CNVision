@@ -407,6 +407,11 @@ def process_exon_mode(gene_input, cnv_type, first_exon, last_exon, build="GRCh38
     
     # Now analyze based on data source
     if use_ncbi_data:
+        # Validate exon range is within transcript bounds
+        max_exon = len(ncbi_exons)
+        if first_exon < 1 or last_exon > max_exon:
+            return [{"error": f"Exon range {first_exon}-{last_exon} exceeds transcript bounds. {transcript} has {max_exon} exons."}]
+        
         exons_in_range = [e for e in ncbi_exons if first_exon <= e['exon'] <= last_exon]
         
         if not exons_in_range:
@@ -457,11 +462,17 @@ def process_exon_mode(gene_input, cnv_type, first_exon, last_exon, build="GRCh38
         
     else:
         # Use MANE data (original logic)
+        
+        # Validate exon range is within transcript bounds
+        exons = mane_data[gene][transcript]
+        max_exon = max(e['exon'] for e in exons)
+        if first_exon < 1 or last_exon > max_exon:
+            return [{"error": f"Exon range {first_exon}-{last_exon} exceeds transcript bounds. {transcript} has {max_exon} exons."}]
+        
         cnv_region = map_exon_numbers_to_regions(gene, transcript, first_exon, last_exon, mane_data)
         if cnv_region is None:
             return [{"error": "Invalid exon numbers"}]
         
-        exons = mane_data[gene][transcript]
         chromosome = exons[0].get("chromosome", "1") if exons else "1"
         
         cnv = {"gene": gene, "start": cnv_region[0], "end": cnv_region[1], "type": cnv_type, "chromosome": chromosome}
@@ -609,6 +620,13 @@ def process_transcript_mode(cdna_notation, cnv_type, build="GRCh38"):
     # Use the MANE Select transcript for analysis
     transcript = mane_transcript
     
+    # Validate cDNA position is within transcript length
+    exons = sorted(mane_data[gene][transcript], key=lambda x: x.get('exon', 0))
+    cdna_length = sum(e['end'] - e['start'] + 1 for e in exons)
+    
+    if parsed['start'] > cdna_length or parsed['end'] > cdna_length:
+        return [{"error": f"cDNA position c.{parsed['start']}_{parsed['end']} exceeds transcript length. {transcript} has {cdna_length}bp of coding sequence."}]
+    
     # Convert cDNA coordinates to genomic coordinates
     c_start = parsed['start']
     c_end = parsed['end']
@@ -624,7 +642,6 @@ def process_transcript_mode(cdna_notation, cnv_type, build="GRCh38"):
         genomic_start, genomic_end = genomic_end, genomic_start
     
     # Get chromosome
-    exons = mane_data[gene][transcript]
     chromosome = exons[0].get("chromosome", "1") if exons else "1"
     
     # Create CNV and analyze
@@ -699,15 +716,34 @@ def process_genomic_mode(genomic_input, build, cnv_type, gene_hint=None):
             gene = canonical
     else:
         genes_in_region = find_genes_in_region(chromosome, start, end, mane_data)
-        if genes_in_region:
-            gene = genes_in_region[0]
-        else:
+        if not genes_in_region:
             return [{"error": f"No genes found in region chr{chromosome}:{start:,}-{end:,} using {build}. Please provide a gene symbol as a hint."}]
+        # Check for multiple genes in region
+        if len(genes_in_region) > 1:
+            gene_list = ", ".join(genes_in_region)
+            return [{"error": f"Multiple genes found in region chr{chromosome}:{start:,}-{end:,}: {gene_list}. This version only supports single-gene analysis. Please provide a specific gene symbol as a hint."}]
+        gene = genes_in_region[0]
     
     if gene not in mane_data:
         return [{"error": f"Gene '{gene}' not found in MANE {build} data"}]
     
     transcript = list(mane_data[gene].keys())[0]
+    exons = mane_data[gene][transcript]
+    
+    # Check if CNV affects transcription start or stop sites
+    gene_start = min(e['start'] for e in exons)
+    gene_end = max(e['end'] for e in exons)
+    
+    affects_start = start <= gene_start
+    affects_end = end >= gene_end
+    
+    if affects_start and affects_end:
+        return [{"error": f"CNV encompasses entire gene {gene} (transcription start site to stop codon). This would result in complete gene deletion/duplication. Region: chr{chromosome}:{start:,}-{end:,}, Gene span: {gene_start:,}-{gene_end:,}."}]
+    if affects_start:
+        warnings.append(f"⚠️ CNV affects transcription start site of {gene}. This may prevent transcription initiation.")
+    if affects_end:
+        warnings.append(f"⚠️ CNV affects stop codon of {gene}. This may result in a truncated or extended protein product.")
+    
     cnv = {"gene": gene, "start": start, "end": end, "type": cnv_type, "chromosome": f"chr{chromosome}"}
     hits = map_cnv_to_exons(cnv, mane_data, transcript)
     
@@ -762,16 +798,8 @@ def index():
             error = f"Invalid input: {str(e)}"
         except Exception as e:
             error = f"Error: {str(e)}"
-            import traceback
-            traceback.print_exc()
     
-    examples = [
-        {"mode": "exon", "description": "FBN1 exons 42-45 deletion"},
-        {"mode": "transcript", "description": "FBN1:c.5065_5546del"},
-        {"mode": "coordinate", "description": "DEL chr15:48,741,090-48,756,096"}
-    ]
-    
-    return render_template("index.html", result=result, error=error, examples=examples)
+    return render_template("index.html", result=result, error=error)
 
 
 if __name__ == "__main__":
