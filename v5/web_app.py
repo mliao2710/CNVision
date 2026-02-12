@@ -364,8 +364,11 @@ def parse_genomic_input(genomic_string):
             'cnv_type_hint': resolve_cnv_hint(cnv_type_hint, copy_number)
         }
     
-    # Pattern 3: ISCN format arr[GRCh37]15q21.1(48,741,090_48,756,096)x1
-    pattern2 = r'arr\[([^\]]+)\]([0-9XY]+)[pq][0-9.]+\(\s*([0-9,_\s]+)\)x([0-9])'
+    # Pattern 3: ISCN-like formats
+    # Supports arr/seq/sseq prefixes and optional cytoband text:
+    #   arr[GRCh37]15q21.1(48,741,090_48,756,096)x1
+    #   seq[GRCh37]19p13.2p13.2(13335371_13346648)x1
+    pattern2 = r'(?:arr|seq|sseq)\[([^\]]+)\]([0-9XY]+)(?:[pq][0-9.]+(?:[pq][0-9.]+)?)?\(\s*([0-9,_\s]+)\)x([0-9])'
     match2 = re.search(pattern2, genomic_string, re.IGNORECASE)
     
     if match2:
