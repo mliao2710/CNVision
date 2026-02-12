@@ -1,0 +1,795 @@
+================================================================================
+                              CNVISION - COMPLETE PROJECT OVERVIEW
+================================================================================
+
+PROJECT PURPOSE
+================================================================================
+
+CNVision is a bioinformatics tool that analyzes Copy Number Variations (CNVs)
+in human genes to predict their biological impact on protein function.
+
+WHAT IS A CNV?
+A Copy Number Variation is a section of DNA that appears in different numbers
+of copies in different people. For example:
+- Normal: 2 copies of a specific DNA region (everyone has 2 copies of most genes)
+- Deletion: 1 copy (missing one copy - CNV type: DELETION)
+- Duplication: 3 copies (extra copy - CNV type: DUPLICATION)
+
+WHY IS THIS IMPORTANT?
+CNVs can cause disease. If a CNV deletes or duplicates exons (the protein-coding
+parts of genes), it might:
+1. Delete important amino acids → protein doesn't work → disease
+2. Cause a "frameshift" → ALL downstream amino acids are wrong → severe disease
+3. Maintain reading frame → partial function preserved → less severe
+
+WHAT DOES CNVISION DO?
+Given a CNV location (where in the genome, which exons are affected), CNVision:
+1. Identifies which exons the CNV affects
+2. Calculates the total length of affected exons
+3. Determines if it causes a FRAMESHIFT or IN-FRAME effect
+4. Presents the result to the user
+
+Example:
+  User: "I have a deletion in gene BRCA1, exons 10-12"
+  CNVision: "These 3 exons total 285 bp → 285 ÷ 3 = 95 (divisible by 3)
+            → IN-FRAME deletion → less severe impact"
+
+
+PROJECT STRUCTURE
+================================================================================
+
+The project is organized into several Python modules and web components:
+
+  /Users/milesliao/Desktop/cnvision/
+  ├── web_app.py                                    [Flask web application]
+  ├── main.py                                       [Command-line interface]
+  ├── coordinate_mapper.py                          [Maps genomic coords to exons]
+  ├── functional_predictor.py                       [Predicts frameshift/in-frame]
+  ├── iscn_parser.py                                [Parses ISCN notation]
+  ├── mane_loader.py                                [Loads gene/exon reference data]
+  ├── parser.py                                     [Additional parsing utilities]
+  ├── templates/
+  │   └── index.html                                [Web UI - HTML/CSS/JavaScript]
+  ├── static/
+  │   └── logo.png                                  [Logo image]
+  ├── utils/
+  │   ├── ncbi_fetcher.py                           [Fetches gene data from NCBI]
+  │   ├── gene_cache.py                             [Caches gene lookups]
+  │   └── __init__.py
+  ├── data/
+  │   └── gene2refseq                               [Gene reference database]
+  |   ├── GRCh37.ref_seq_select.gz                  [GRCh3 refseq select database from UCSB browser]
+  │   └── MANE.GRCh38.v1.4.refseq_genomic.gff.gz    [MANE GRCh38 refseq database]
+  ├── dockerfile                                    [Docker configuration]
+  ├── pyproject.toml                                [Python project metadata]
+  └── README.md                                     [Project documentation]
+
+
+KEY CONCEPTS: BIOLOGICAL BACKGROUND
+================================================================================
+
+1. GENES, EXONS, AND CODONS
+   - Gene: A section of DNA that codes for a protein
+   - Exon: The "coding" part of a gene that's read to make protein
+   - Codon: A group of 3 DNA nucleotides that codes for 1 amino acid
+   
+   Example:
+     Exon 1: ...ATGCGATCG... (coding DNA)
+     Codons: [ATG] [CGA] [TCG] (read in groups of 3)
+     Amino acids: [Met] [Arg] [Ser]
+
+2. READING FRAME
+   DNA is read in groups of 3 (codons). The "frame" is WHERE you start reading:
+   
+   DNA sequence: ATGCGATCGATC
+   Frame 1: [ATG][CGA][TCG][ATC]  → Met, Arg, Ser, Ile
+   Frame 2: A[TGC][GAT][CGA][TC]  → Cys, Asp, Arg, ???
+   Frame 3: AT[GCG][ATC][GAT][C]  → Ala, Ile, Asp, ???
+   
+   Each frame gives DIFFERENT amino acids!
+
+3. IN-FRAME vs FRAMESHIFT
+   - IN-FRAME: Deleted bases are divisible by 3 → reading frame stays correct
+     Example: Delete 6 bases (6÷3=2 codons) → downstream codons still correct
+     Result: Some amino acids missing, but rest of protein intact
+   
+   - FRAMESHIFT: Deleted bases NOT divisible by 3 → frame shifts
+     Example: Delete 5 bases (5÷3=1.67) → frame shifts by 2
+     Result: All downstream codons are WRONG → protein usually non-functional
+   
+   FRAMESHIFT is usually more severe because the entire downstream protein is
+   changed. IN-FRAME is less severe because only the deleted region is affected.
+
+4. CLINICAL SIGNIFICANCE
+   - Frameshift mutations: Usually cause severe/complete loss of function
+     Examples: Duchenne muscular dystrophy (frameshift in DMD gene)
+   
+   - In-frame mutations: May preserve partial function
+     Examples: Becker muscular dystrophy (in-frame deletions in DMD gene)
+     Patients often have milder symptoms than Duchenne patients
+
+
+KEY CONCEPTS: DATA AND TOOLS
+================================================================================
+
+1. MANE DATABASE
+   MANE = "Matched Annotation from NCBI and EBI"
+   
+   It's a reference database of "canonical" gene sequences:
+   - One best transcript per gene (MANE Select)
+   - Contains exon positions for ~20,000 human genes
+   - Available in two genome builds: GRCh37 and GRCh38
+   
+   Example MANE entry:
+     Gene: BRCA1
+     Transcript: NM_007294.4
+     Build: GRCh38
+     Chromosome: chr17
+     Exons: [start-end, start-end, ...] (24 exons for BRCA1)
+
+2. GENOME BUILDS
+   The human genome has been sequenced/assembled multiple times:
+   
+   - GRCh37 (hg19): Released 2009, still commonly used
+   - GRCh38 (hg38): Released 2013, current reference
+   
+   Same gene, different coordinates in each build!
+   Important: Always specify which build you're using.
+   
+   Example: BRCA1 exon 1 is at different chromosome positions in GRCh37 vs GRCh38
+
+3. NCBI (NATIONAL CENTER FOR BIOTECHNOLOGY INFORMATION)
+   - Maintains massive databases of genetic information
+   - Provides APIs to query genes, transcripts, sequences
+   - CNVision uses NCBI APIs to fetch exon data for non-MANE transcripts
+   
+   CNVision uses two NCBI APIs:
+   a) esearch: Search for genes by transcript ID
+   b) efetch: Fetch detailed gene information
+
+4. TRANSCRIPT NOTATION
+   
+   Transcripts have IDs like: NM_007294.4
+   Breaking this down:
+   - NM_ = mRNA (protein-coding transcript)
+   - 007294 = accession number (unique ID)
+   - .4 = version number (4th release of this transcript)
+   
+   Alternative transcript types:
+   - NR_ = non-coding RNA
+   - XM_ = predicted mRNA
+   - XR_ = predicted non-coding RNA
+
+5. ISCN NOTATION (International System for Cytogenomic Nomenclature)
+   Used in clinical reports from microarray/sequencing tests
+   
+   Example: arr[GRCh38]17q21.31(43044295_43049120)x1
+   Breaking this down:
+   - arr = array result (genomic array/sequencing)
+   - [GRCh38] = genome build
+   - 17q21.31 = chromosome 17, long arm, band 21.31
+   - (43044295_43049120) = genomic coordinates (start_end)
+   - x1 = copy number 1 (deletion, since normal is x2)
+   
+   Copy numbers:
+   - x1 = deletion (only 1 copy instead of 2)
+   - x2 = normal (2 copies, as expected)
+   - x3 = duplication (3 copies instead of 2)
+
+
+KEY FILES EXPLAINED
+================================================================================
+
+1. web_app.py (800 lines)
+   ═══════════════════════════════════════════════════════════════════════════
+   PURPOSE: Main Flask web application - provides web interface via browser
+   
+   WHAT IS FLASK?
+   Flask is a Python framework for building web applications. It:
+   - Handles HTTP requests (GET, POST) from web browsers
+   - Processes form submissions
+   - Returns HTML pages with results
+   
+   KEY FUNCTIONS:
+   
+   fetch_refseq_info(transcript_id)
+   - Queries NCBI database to get exon coordinates
+   - Returns: gene symbol, chromosome, strand, exon list
+   - Used when transcript not in MANE database
+   
+   parse_cdna_notation(cdna_string)
+   - Parses HGVS cDNA notation (e.g., "FBN1:c.5065_5546del")
+   - Extracts: gene, transcript, start position, end position, variant type
+   - Uses regex pattern matching to extract values
+   
+   parse_genomic_input(genomic_string)
+   - Parses multiple genomic coordinate formats
+   - Supports: "chr17:43000000-43002000", "DEL chr17:...", ISCN notation
+   - Auto-detects build (GRCh37 vs GRCh38)
+   
+   process_exon_mode(gene_input, cnv_type, first_exon, last_exon, build)
+   - Main analysis: user provides gene and exon numbers
+   - Looks up exons in MANE database
+   - Calculates frameshift/in-frame effect
+   
+   process_transcript_mode(cdna_notation, cnv_type, build)
+   - Main analysis: user provides HGVS cDNA notation
+   - Parses notation, converts to genomic coordinates
+   - Identifies affected exons, calculates effect
+   
+   process_genomic_mode(genomic_input, build, cnv_type, gene_hint)
+   - Main analysis: user provides genomic coordinates
+   - Parses coordinates, auto-detects gene (or uses hint)
+   - Identifies affected exons, calculates effect
+   
+   @app.route("/", methods=["GET", "POST"])
+   def index()
+   - Main route handler for the web interface
+   - GET: displays blank form
+   - POST: processes form submission, returns results
+
+
+2. main.py (398 lines)
+   ═══════════════════════════════════════════════════════════════════════════
+   PURPOSE: Command-line interface - use CNVision without web browser
+   
+   WHAT DOES THIS DO?
+   Provides the same functionality as web_app.py but in the terminal.
+   - No web browser needed
+   - Good for batch processing
+   - Good for pipeline integration
+   
+   KEY FUNCTIONS:
+   
+   select_transcript(mane_data, gene)
+   - When gene has multiple transcripts, let user choose which one
+   - Displays menu with numbered options
+   - Returns selected transcript ID
+   
+   run_coordinate_mode(mane_data)
+   - CLI version of coordinate mode
+   - Prompts user for: gene name, start coord, end coord, CNV type
+   - Performs analysis, displays results
+   
+   Similar functions for other input modes...
+   
+   main()
+   - Entry point for the CLI
+   - Displays menu loop
+   - Calls appropriate mode functions
+
+
+3. coordinate_mapper.py (248 lines)
+   ═══════════════════════════════════════════════════════════════════════════
+   PURPOSE: Maps CNVs to exons - identifies which exons are affected
+   
+   KEY FUNCTIONS:
+   
+   map_cnv_to_exons(cnv, mane_data, transcript)
+   - CORE FUNCTION: finds exons that overlap with CNV region
+   - Input: CNV (start/end coordinates), MANE data
+   - Output: list of exon numbers affected
+   
+   ALGORITHM:
+   For each exon in the gene:
+     Does it overlap with CNV region?
+     Overlap = exon_end >= cnv_start AND exon_start <= cnv_end
+     If yes: add to list
+   
+   map_exon_numbers_to_regions(gene, transcript, first_exon, last_exon, mane_data)
+   - Converts exon numbers to genomic coordinates
+   - Input: gene, first exon number, last exon number
+   - Output: [start_coord, end_coord]
+
+
+4. functional_predictor.py (214 lines)
+   ═══════════════════════════════════════════════════════════════════════════
+   PURPOSE: Predicts frameshift vs in-frame effect
+   
+   KEY FUNCTION:
+   
+   predict_cnv_effect(exon_hits, mane_data)
+   - THE CORE ANALYSIS FUNCTION
+   - Algorithm:
+     1. Get list of affected exons
+     2. Look up length of each exon in MANE database
+     3. Sum the lengths
+     4. Check: total_length % 3 == 0?
+        - Yes: IN-FRAME (less severe)
+        - No: FRAMESHIFT (more severe)
+     5. Return result string
+   
+   Example calculation:
+   Exons affected: 5, 6, 7
+   Exon 5 length: 150 bp
+   Exon 6 length: 123 bp
+   Exon 7 length: 150 bp
+   Total: 150 + 123 + 150 = 423 bp
+   423 % 3 = 0 (divisible by 3)
+   Result: "in-frame deletion (3 exons)"
+
+
+5. iscn_parser.py (103 lines)
+   ═══════════════════════════════════════════════════════════════════════════
+   PURPOSE: Parses ISCN notation from microarray reports
+   
+   KEY FUNCTIONS:
+   
+   parse_iscn_notation(iscn_string)
+   - Parses ISCN format: arr[GRCh38]17q21.31(43044295_43049120)x1
+   - Extracts: chromosome, start, end, build, copy_number, cnv_type
+   - Uses regex to extract values
+   
+   find_genes_in_region(chromosome, start, end, mane_data)
+   - Finds which genes overlap with genomic region
+   - Useful for auto-detecting gene when only coordinates given
+
+
+6. mane_loader.py (313 lines)
+   ═══════════════════════════════════════════════════════════════════════════
+   PURPOSE: Loads MANE database into memory at startup
+   
+   WHAT IS THIS?
+   - Reads MANE database files (GFF or GTF format)
+   - Parses exon information
+   - Stores in nested dictionaries for fast lookup
+   
+   DATA STRUCTURE:
+   mane_data = {
+     "BRCA1": {
+       "NM_007294.4": [
+         {"exon": 1, "start": 43044295, "end": 43044494, "length": 200, ...},
+         {"exon": 2, "start": 43047643, "end": 43047814, "length": 172, ...},
+         ...
+       ]
+     },
+     "TP53": {
+       "NM_000546.6": [
+         ...
+       ]
+     }
+   }
+   
+   KEY FUNCTIONS:
+   
+   load_mane_exons(gff_path)
+   - Reads GFF/GTF file (compressed with gzip)
+   - Parses exon features
+   - Returns nested dictionary (shown above)
+   
+   load_gene_mapping(mapping_file)
+   - Reads NCBI's gene2refseq file
+   - Creates mapping: transcript → gene symbol
+   - Used for transcript ID lookups
+
+
+7. utils/ncbi_fetcher.py
+   ═══════════════════════════════════════════════════════════════════════════
+   PURPOSE: Fetches gene data from NCBI online database
+   
+   KEY FUNCTION:
+   
+   fetch_refseq_info(transcript_id)
+   - Queries NCBI APIs to get exon coordinates
+   - Used for transcripts not in MANE database
+   - Returns: gene symbol, chromosome, strand, exons
+   
+   API CALLS:
+   1. esearch: Search for gene ID using transcript ID
+   2. efetch: Get gene table with exon coordinates
+   
+   WHY NEEDED?
+   - MANE only includes "MANE Select" transcripts
+   - Some users have "non-MANE" transcripts
+   - This tool can fetch their exon data from NCBI
+
+
+8. templates/index.html (527 lines)
+   ═══════════════════════════════════════════════════════════════════════════
+   PURPOSE: Web interface (HTML + CSS + JavaScript)
+   
+   WHAT IS HTML/CSS/JAVASCRIPT?
+   
+   HTML (HyperText Markup Language):
+   - Defines structure of web page (forms, buttons, text)
+   - Example: <input type="text"> creates a text box
+   
+   CSS (Cascading Style Sheets):
+   - Defines appearance (colors, fonts, layout)
+   - Example: color: #00c8ff makes text cyan
+   
+   JavaScript (JS):
+   - Runs in browser, makes page interactive
+   - Example: Show/hide form fields based on selected mode
+   
+   STRUCTURE:
+   - HTML form with three input modes (exon, transcript, coordinate)
+   - JavaScript toggles which form fields are visible
+   - Results displayed in a table
+   - Styled with Bootstrap CSS framework for professional look
+   
+   KEY FEATURES:
+   - Dark theme (teal accent colors - cyberpunk aesthetic)
+   - Responsive design (works on mobile/tablet/desktop)
+   - Dynamic form validation
+   - Example section for user reference
+
+
+9. dockerfile
+   ═══════════════════════════════════════════════════════════════════════════
+   PURPOSE: Container configuration for deploying application
+   
+   WHAT IS DOCKER?
+   Docker packages the entire application with all dependencies into a
+   "container" - a standardized unit that runs the same everywhere.
+   
+   Like shipping software in a box:
+   - Box contains: Python 3.11, Flask, requests library, CNVision code
+   - Run box anywhere: Linux, Mac, Windows, cloud
+   - Always works the same (no "works on my machine" problems)
+   
+   KEY STEPS IN DOCKERFILE:
+   1. Start with Python 3.11 base image
+   2. Install system dependencies (build tools, git)
+   3. Copy project files into container
+   4. Install Python packages (Flask, requests)
+   5. Expose port 5000 (web server port)
+   6. Run command: python web_app.py
+
+
+10. pyproject.toml
+    ═══════════════════════════════════════════════════════════════════════════
+    PURPOSE: Project metadata and Python package configuration
+    
+    Contains:
+    - Project name, version, description
+    - Author information
+    - Python version requirement (>=3.10)
+    - Build system configuration
+
+
+TECHNOLOGIES USED
+================================================================================
+
+LANGUAGES:
+-----------
+1. Python (main programming language)
+   - Used for: core analysis, data processing, web server
+   - Version: 3.10+
+   - Why Python? Good libraries for bioinformatics, easy to learn
+
+2. HTML (HyperText Markup Language)
+   - Used for: web page structure
+   - Version: HTML5
+
+3. CSS (Cascading Style Sheets)
+   - Used for: web page styling/appearance
+   - Version: CSS3
+
+4. JavaScript
+   - Used for: web page interactivity
+   - Version: ES6+ (modern JavaScript)
+
+
+LIBRARIES/FRAMEWORKS:
+---------------------
+1. Flask (Python web framework)
+   - What: Lightweight web framework for Python
+   - Used for: handling HTTP requests, routing, rendering templates
+   - Why: Minimal, easy to learn, perfect for this use case
+   
+2. Requests (Python HTTP library)
+   - What: Makes HTTP requests easy in Python
+   - Used for: querying NCBI APIs
+   - Why: Standard, reliable library
+
+3. Bootstrap (CSS framework)
+   - What: Pre-made CSS styles for professional-looking websites
+   - Used for: responsive design, form styling
+   - Why: Save time on CSS, looks professional
+
+4. Jinja2 (Python templating engine)
+   - What: Generates HTML with Python variables
+   - Used for: rendering result tables in HTML
+   - Why: Separates code from HTML, easier to maintain
+
+
+DATA FORMATS:
+-----------
+1. GFF (General Feature Format)
+   - Format for storing genomic feature data
+   - Used for: MANE gene/exon information
+   - Structure: tab-separated columns (chromosome, feature type, start, end, ...)
+
+2. GTF (Gene Transfer Format)
+   - Similar to GFF, specifically for gene features
+   - Used by: UCBI RefSeq Select database
+
+3. TSV/CSV (Tab/Comma Separated Values)
+   - Simple text format with columns
+   - Used for: gene2refseq mapping file
+
+4. XML (Extensible Markup Language)
+   - Format with tags (like HTML)
+   - Used for: NCBI API responses
+
+5. JSON (JavaScript Object Notation)
+   - Format for structured data: {"key": "value"}
+   - Used for: inter-module communication (not in this project yet)
+
+
+WORKFLOW: HOW IT ALL FITS TOGETHER
+================================================================================
+
+USER INTERACTION FLOW (Web Interface):
+
+1. User opens browser, goes to http://localhost:5000
+   ↓
+2. Flask renders HTML template (index.html)
+   ↓
+3. User sees form with three options:
+   a) Exon Numbers Mode
+   b) Transcript/cDNA Notation Mode
+   c) Genomic Coordinates Mode
+   ↓
+4. User fills form and clicks "Analyze CNV"
+   ↓
+5. Browser sends form data to Flask via POST request
+   ↓
+6. Flask server routes to index() function in web_app.py
+   ↓
+7. Based on selected mode, call appropriate processing function:
+   - Mode A → process_exon_mode()
+   - Mode B → process_transcript_mode()
+   - Mode C → process_genomic_mode()
+   ↓
+8. Processing function chain:
+   a) Parse input (extract coordinates/exon numbers)
+   b) Look up data in MANE database (using mane_loader results)
+   c) Call map_cnv_to_exons() to find affected exons
+   d) Call predict_cnv_effect() to calculate frameshift/in-frame
+   e) Return results
+   ↓
+9. Flask renders results as HTML table
+   ↓
+10. Browser displays results to user
+
+
+DATA FLOW (Technical):
+
+MANE Database (File) → mane_loader.py → memory
+    (GFF/GTF file, ~100MB)      (parsed)    (nested dict)
+                                                ↓
+                                            web_app.py
+                                          (uses for lookups)
+                                                ↓
+User Input ← HTML Form ← web_app.py processes:
+                           - parse_cdna_notation()
+                           - parse_genomic_input()
+                           - coordinate_mapper.map_cnv_to_exons()
+                           - functional_predictor.predict_cnv_effect()
+                                ↓
+                           Results (framshift/in-frame)
+                                ↓
+                           Rendered as HTML → Browser
+
+
+DEPLOYMENT: LOCAL vs DOCKER
+================================================================================
+
+LOCAL DEPLOYMENT (Development):
+1. Install Python 3.10+
+2. Install packages: pip install flask requests
+3. Download MANE database files to data/
+4. Run: python web_app.py
+5. Open browser: http://localhost:5000
+
+DOCKER DEPLOYMENT (Production):
+1. Run: docker build -t cnvision .
+   (Builds container image from Dockerfile)
+2. Run: docker run -p 5000:5000 -v /path/to/data:/app/data cnvision
+   (Launches container, maps port 5000, mounts data folder)
+3. Open browser: http://localhost:5000
+   
+Benefits of Docker:
+- Same environment everywhere (dev, test, production)
+- Easy to scale (run multiple containers)
+- Easy to deploy to cloud (AWS, Google Cloud, etc.)
+- No installation headaches
+
+
+EXAMPLE: ANALYZING A REAL CNV
+================================================================================
+
+SCENARIO: Patient has deletion in BRCA1 gene (cancer gene)
+Medical report says: "Exons 5-7 are deleted"
+
+WHAT CLINICIAN DOES:
+1. Opens CNVision web interface
+2. Selects "Exon Numbers" mode
+3. Enters:
+   - Gene: BRCA1
+   - First Exon: 5
+   - Last Exon: 7
+   - CNV Type: Deletion
+4. Clicks "Analyze CNV"
+
+WHAT HAPPENS BEHIND THE SCENES:
+1. web_app.py receives form data
+2. Calls: process_exon_mode("BRCA1", "deletion", 5, 7, "GRCh38")
+3. Function looks up BRCA1 in MANE database
+4. Finds transcript: NM_007294.4
+5. Calls: map_cnv_to_exons()
+   - Gets positions of exons 5, 6, 7 from MANE
+   - Exon 5: 43044618-43044911 (294 bp)
+   - Exon 6: 43049120-43049320 (201 bp) [approximately]
+   - Exon 7: 43051062-43051236 (175 bp) [approximately]
+6. Calls: predict_cnv_effect()
+   - Sums lengths: 294 + 201 + 175 = 670 bp
+   - Checks: 670 % 3 = 1 (not divisible by 3!)
+   - Result: "FRAMESHIFT DELETION"
+7. Returns to web_app.py with result
+8. Renders HTML showing:
+   - Gene: BRCA1
+   - Transcript: NM_007294.4
+   - Predicted Consequence: Frameshift deletion (3 exons)
+   - Total length: 670 bp
+   - Exon table showing exon numbers and sizes
+9. Browser displays nicely formatted result
+
+INTERPRETATION FOR CLINICIAN:
+"This is a frameshift deletion, which is likely to cause severe loss of function
+of the BRCA1 protein. BRCA1 is a tumor suppressor, so loss of function increases
+cancer risk. This is likely pathogenic."
+
+
+COMMON QUESTIONS & ANSWERS
+================================================================================
+
+Q: Why are there two genome builds (GRCh37 and GRCh38)?
+A: The human genome has been sequenced multiple times. GRCh37 was standard for
+   many years, but GRCh38 is newer and more accurate. Different labs use different
+   builds. Always check which build your coordinates are from!
+
+Q: What's the difference between MANE Select and other transcripts?
+A: MANE Select is ONE consensus transcript per gene, chosen by NCBI and EBI as
+   the "best" one for research/clinical use. Some genes have 50+ transcripts!
+   MANE Select gives one standard transcript to use.
+
+Q: What happens if my transcript isn't in MANE?
+A: CNVision tries to fetch it from NCBI online database. This works for most
+   RefSeq transcripts but may fail if: transcript doesn't exist, NCBI is down,
+   network issues, etc.
+
+Q: Can I use this for real clinical diagnosis?
+A: CNVision is a research tool to help interpret CNVs. For clinical use, consult
+   with genetic counselors and use certified clinical tools. This tool helps
+   you understand the biology but shouldn't be sole basis for clinical decisions.
+
+Q: What if two exons overlap but aren't fully affected?
+A: CNVision only considers exons that are FULLY affected (completely within CNV
+   region). Partially affected exons are counted as "not hit". For more precise
+   analysis, you'd need to manually calculate the exact bases affected.
+
+Q: How accurate is the frameshift/in-frame prediction?
+A: It's mathematically accurate (length % 3). However, the biological impact also
+   depends on: where in the gene, what the protein does, splice sites, etc.
+   CNVision gives one piece of the puzzle.
+
+Q: Can I batch process multiple CNVs?
+A: Not through web interface, but you can use main.py (CLI) or modify the code
+   to loop through multiple inputs.
+
+Q: Is my data secure? (Upload to internet?)
+A: All processing happens locally on your machine. No data sent anywhere unless
+   you query NCBI APIs (which doesn't send your actual data, just searches for
+   gene information).
+
+
+TROUBLESHOOTING
+================================================================================
+
+ISSUE: "Gene not found in MANE database"
+SOLUTION: Make sure you spelled the gene name correctly. Some genes might not be
+          in the MANE dataset. Try looking up in NCBI directly.
+
+ISSUE: "Could not fetch transcript from NCBI"
+SOLUTION: Check your internet connection. NCBI APIs might be down. The transcript
+          might not exist. Try again later or with a different transcript.
+
+ISSUE: "Exon numbers out of range"
+SOLUTION: Gene doesn't have that many exons. Use exon numbers within the valid
+          range for that gene/transcript.
+
+ISSUE: "Could not parse genomic coordinates"
+SOLUTION: Check format. Valid formats:
+          - chr17:43000000-43002000
+          - 17:43000000-43002000
+          - DEL chr17:43000000-43002000
+          - arr[GRCh38]17q21.31(43044295_43049120)x1
+
+ISSUE: Flask server won't start
+SOLUTION: 
+- Check Python version (need 3.10+): python --version
+- Install dependencies: pip install flask requests
+- Make sure port 5000 is free: lsof -i :5000 (or netstat on Windows)
+- Move MANE data files to data/ folder
+
+ISSUE: MANE files are huge / database loading slowly
+SOLUTION: MANE files are 100+ MB. On first load, they're parsed into memory.
+          This takes 30 seconds - 2 minutes depending on computer. It's normal.
+          After loading, queries are fast. You can also pre-process the files
+          to make them smaller (advanced).
+
+
+FUTURE ENHANCEMENTS
+================================================================================
+
+Potential improvements to CNVision:
+
+1. Support for more annotation types:
+   - Intron-spanning deletions
+   - Copy number > 3
+   - Partial exon deletions
+
+2. Integration with disease databases:
+   - Link to ClinVar (clinical significance database)
+   - Check if similar CNVs are known pathogenic
+
+3. Protein structure visualization:
+   - Show which protein domain is affected
+   - Impact on domain function
+
+4. Batch processing:
+   - Accept file with multiple CNVs
+   - Generate report with all results
+
+5. Performance improvements:
+   - Cache more aggressively
+   - Pre-compile regex patterns
+   - Use SQLite instead of in-memory dicts
+
+6. Mobile app:
+   - React/React Native interface
+   - Offline capability
+
+7. API endpoints:
+   - RESTful API for programmatic access
+   - JSON responses
+
+
+SUMMARY
+================================================================================
+
+CNVision is a Python bioinformatics tool that:
+
+1. Accepts CNV information in 3 formats:
+   - Exon numbers (e.g., "exons 5-7")
+   - cDNA notation (e.g., "FBN1:c.5065_5546del")
+   - Genomic coordinates (e.g., "chr17:43000000-43002000")
+
+2. Uses reference databases:
+   - MANE: ~20,000 human genes with exon positions
+   - NCBI: Online database for non-MANE transcripts
+
+3. Analyzes CNV impact:
+   - Identifies affected exons
+   - Calculates total length
+   - Determines frameshift vs in-frame effect
+
+4. Provides results via:
+   - Web interface (Flask + HTML/CSS/JS)
+   - Command-line interface (main.py)
+   - Can be containerized with Docker
+
+The core insight: frameshift mutations (length % 3 != 0) are usually more severe
+than in-frame mutations (length % 3 == 0) because they affect all downstream
+amino acids in the protein.
+
+This tool helps clinicians and researchers quickly assess the likely impact of
+structural variants on genes, which is crucial for genetic diagnosis and
+understanding disease mechanisms.
+
+================================================================================
+                                  END OF EXPLANATION
+================================================================================
