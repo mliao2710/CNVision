@@ -229,6 +229,7 @@ def normalize_build(build):
     value = str(build).strip()
     if value.startswith("[") and value.endswith("]"):
         value = value[1:-1]
+    value = value.replace("_", "").replace(" ", "")
     alias = {
         "grch37": "GRCh37",
         "hg19": "GRCh37",
@@ -289,101 +290,84 @@ def parse_cdna_notation(cdna_string):
 
 
 def parse_genomic_input(genomic_string):
-    """Parse genomic coordinate notation with DEL/DUP detection."""
-    genomic_string = genomic_string.strip().replace(' ', '')
+    """Parse genomic coordinate notation with robust format tolerance."""
+    raw = genomic_string.strip()
+    if not raw:
+        return None
 
-    # Detect and strip leading DEL/DUP token so forms like "DELhg38:chr1:..."
-    # can still be parsed for build aliases and coordinates.
+    text = raw
+    text_upper = text.upper()
+
+    # CNV type hint from explicit DEL/DUP label.
     cnv_type_hint = None
-    if genomic_string.upper().startswith('DEL'):
+    if re.search(r'^\s*DEL\b', text_upper):
         cnv_type_hint = 'deletion'
-        genomic_string = genomic_string[3:]
-    elif genomic_string.upper().startswith('DUP'):
+    elif re.search(r'^\s*DUP\b', text_upper):
         cnv_type_hint = 'duplication'
-        genomic_string = genomic_string[3:]
 
-    # Detect leading build prefix (e.g., hg19:chrX:...)
-    prefix_build = None
-    prefix_match = re.match(r'^(hg19|hg38|grch37|grch38):', genomic_string, re.IGNORECASE)
-    if prefix_match:
-        prefix_build = normalize_build(prefix_match.group(1))
-        genomic_string = genomic_string[prefix_match.end():]
-    
-    # Helper: extract trailing build [GRCh38] or [GRCh37] and copy number x1/x3
-    # These can appear at the end in any order: x1[GRCh38] or [GRCh38]x1
-    def extract_suffix(s):
-        build = None
-        copy_number = None
-        build_match = re.search(r'\[(GRCh3[78]|hg19|hg38)\]', s, re.IGNORECASE)
-        if build_match:
-            build = normalize_build(build_match.group(1))
-        copy_match = re.search(r'x([0-9])', s, re.IGNORECASE)
-        if copy_match:
-            copy_number = int(copy_match.group(1))
-            if cnv_type_hint is None:
-                # x1 = deletion, x3 = duplication (same logic as ISCN)
-                pass  # handled below
-        return build, copy_number
-    
-    # Determine cnv_type_hint from copy number if not already set by DEL/DUP prefix
-    def resolve_cnv_hint(existing_hint, copy_number):
+    # Build detection (accepts hg19/hg 19/hg38/hg 38/GRCh37/GRCh38, with/without brackets).
+    build = None
+    build_match = re.search(r'\[?\s*(grch\s*3[78]|hg\s*19|hg\s*38)\s*\]?', text, re.IGNORECASE)
+    if build_match:
+        build = normalize_build(build_match.group(1))
+
+    # Copy-number detection from x1/x3 or multiplication symbol.
+    copy_number = None
+    copy_match = re.search(r'[x×]\s*([0-9]+)', text, re.IGNORECASE)
+    if copy_match:
+        copy_number = int(copy_match.group(1))
+
+    def resolve_cnv_hint(existing_hint, copy_num):
         if existing_hint:
             return existing_hint
-        if copy_number is not None:
-            if copy_number < 2:
-                return 'deletion'
-            elif copy_number > 2:
-                return 'duplication'
+        if copy_num is None:
+            return None
+        if copy_num < 2:
+            return 'deletion'
+        if copy_num > 2:
+            return 'duplication'
         return None
-    
-    # Pattern 1: chr15:48,741,090-48,756,096 (with optional DEL/DUP prefix and x1[GRCh38] suffix)
-    pattern1 = r'(?:DEL|DUP)?\s*chr([0-9XY]+):([0-9,]+)-([0-9,]+)'
-    match1 = re.search(pattern1, genomic_string, re.IGNORECASE)
-    
-    if match1:
-        build, copy_number = extract_suffix(genomic_string)
+
+    # Chromosome detection:
+    # 1) explicit chr prefix
+    chr_match = re.search(r'chr\s*[:\-]?\s*([0-9]{1,2}|X|Y)\b', text, re.IGNORECASE)
+    chromosome = chr_match.group(1) if chr_match else None
+
+    # 2) ISCN/cytoband style at the start (ignore p/q band details)
+    if not chromosome:
+        lead = text
+        lead = re.sub(r'^\s*(DEL|DUP)\b', '', lead, flags=re.IGNORECASE)
+        lead = re.sub(r'^\s*(arr|seq|sseq)\b', '', lead, flags=re.IGNORECASE)
+        lead = re.sub(r'\[\s*(grch\s*3[78]|hg\s*19|hg\s*38)\s*\]', '', lead, flags=re.IGNORECASE)
+        lead = lead.strip()
+        lead_match = re.match(r'^([0-9]{1,2}|X|Y)(?=[pq]|[:\(\s_\-]|$)', lead, re.IGNORECASE)
+        if lead_match:
+            chromosome = lead_match.group(1)
+
+    # Coordinates: use first two large genomic integers found (ignore commas/other separators).
+    coordinate_values = []
+    for m in re.finditer(r'\d[\d,]*', text):
+        token = m.group(0).replace(',', '')
+        if len(token) >= 5:
+            try:
+                coordinate_values.append(int(token))
+            except ValueError:
+                continue
+
+    if chromosome and len(coordinate_values) >= 2:
+        start = coordinate_values[0]
+        end = coordinate_values[1]
+        if start > end:
+            start, end = end, start
         return {
-            'chromosome': match1.group(1),
-            'start': int(match1.group(2).replace(',', '')),
-            'end': int(match1.group(3).replace(',', '')),
-            'build': build or prefix_build,
+            'chromosome': chromosome.upper(),
+            'start': start,
+            'end': end,
+            'build': build,
+            'copy_number': copy_number,
             'cnv_type_hint': resolve_cnv_hint(cnv_type_hint, copy_number)
         }
-    
-    # Pattern 2: Without 'chr' prefix: 15:48,741,090-48,756,096
-    pattern1b = r'(?:DEL|DUP)?\s*([0-9XY]+):([0-9,]+)-([0-9,]+)'
-    match1b = re.search(pattern1b, genomic_string, re.IGNORECASE)
-    
-    if match1b:
-        build, copy_number = extract_suffix(genomic_string)
-        return {
-            'chromosome': match1b.group(1),
-            'start': int(match1b.group(2).replace(',', '')),
-            'end': int(match1b.group(3).replace(',', '')),
-            'build': build or prefix_build,
-            'cnv_type_hint': resolve_cnv_hint(cnv_type_hint, copy_number)
-        }
-    
-    # Pattern 3: ISCN-like formats
-    # Supports arr/seq/sseq prefixes and optional cytoband text:
-    #   arr[GRCh37]15q21.1(48,741,090_48,756,096)x1
-    #   seq[GRCh37]19p13.2p13.2(13335371_13346648)x1
-    pattern2 = r'(?:arr|seq|sseq)\[([^\]]+)\]([0-9XY]+)(?:[pq][0-9.]+(?:[pq][0-9.]+)?)?\(\s*([0-9,_\s]+)\)x([0-9])'
-    match2 = re.search(pattern2, genomic_string, re.IGNORECASE)
-    
-    if match2:
-        coords = match2.group(3).replace(',', '').replace(' ', '').split('_')
-        copy_number = int(match2.group(4))
-        if len(coords) == 2:
-            return {
-                'chromosome': match2.group(2),
-                'start': int(coords[0]),
-                'end': int(coords[1]),
-                'build': normalize_build(match2.group(1)) or prefix_build,
-                'copy_number': copy_number,
-                'cnv_type_hint': resolve_cnv_hint(cnv_type_hint, copy_number)
-            }
-    
+
     return None
 
 
@@ -836,7 +820,7 @@ def index():
                     genomic_input, build, cnv_type,
                     gene_hint if gene_hint else None
                 )
-            
+
         except ValueError as e:
             error = f"Invalid input: {str(e)}"
         except Exception as e:
