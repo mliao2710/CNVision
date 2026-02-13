@@ -103,6 +103,7 @@ def map_cnv_to_exons(
             overlap_start = max(start, exon_start)
             overlap_end = min(end, exon_end)
             overlap_length = overlap_end - overlap_start + 1
+            full_exon_coverage = overlap_start == exon_start and overlap_end == exon_end
             
             # Clinical-grade frame calls should be based on coding sequence only.
             coding_overlap = 0
@@ -117,7 +118,8 @@ def map_cnv_to_exons(
                 "start": overlap_start,
                 "end": overlap_end,
                 "length": coding_overlap,
-                "genomic_length": overlap_length
+                "genomic_length": overlap_length,
+                "full_exon_coverage": full_exon_coverage
             })
 
     # ========================================================================
