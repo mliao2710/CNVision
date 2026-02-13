@@ -373,6 +373,29 @@
                               Total length (bp): <span style="color:var(--teal)">{{ total_length }}</span>
                               <span style="margin-left:22px;">Amino acid check (total/3): <span style="color:var(--teal)">{{ (total_length / 3)|round(2) }}</span></span>
                             </div>
+                            {% set coverage_flags = r.hit_exons|map(attribute='full_exon_coverage')|list %}
+                            {% set current_mode = request.form.get('mode') %}
+                            {% if coverage_flags|length > 0 and current_mode in ['coordinate', 'transcript'] %}
+                                {% set full_count = coverage_flags|select('equalto', True)|list|length %}
+                                {% set partial_count = coverage_flags|select('equalto', False)|list|length %}
+                                <div style="margin-top:8px; color:#aad; font-weight:600;">
+                                  Exon coverage: <span style="color:var(--teal)">
+                                  {% if partial_count == 0 %}
+                                      Whole exon(s) only
+                                  {% elif full_count == 0 %}
+                                      Partial exon overlap only
+                                  {% else %}
+                                      Mixed ({{ full_count }} whole, {{ partial_count }} partial)
+                                  {% endif %}
+                                  </span>
+                                </div>
+                                {% if partial_count > 0 %}
+                                <div style="margin-top:8px; background-color:#1d1a12; border-left:3px solid #f6c76b; border-radius:6px; padding:8px 10px; line-height:1.45;">
+                                  <span style="color:#f6c76b; font-weight:700;">Note:</span>
+                                  <span style="color:#c7d3df; font-weight:600;"> Partial exon overlap may not match exon-mode results (which use full exon lengths).</span>
+                                </div>
+                                {% endif %}
+                            {% endif %}
                         </div>
                     {% else %}
                         <div style="margin-top: 15px; color: #888;">
