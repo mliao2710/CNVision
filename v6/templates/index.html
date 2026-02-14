@@ -6,7 +6,7 @@ Purpose:
 - Render analysis results, warnings, and supporting interpretation context.
 
 Core Functions:
-- Input form rendering for exon, transcript/cDNA, and genomic coordinate modes.
+- Input form rendering for exon, genomic coordinate, and HGVS genomic (g.) modes.
 - Dynamic mode switching and client-side required-field behavior.
 - Server-result presentation (consequence, exon table, coverage, notes).
 - Bootstrap-backed layout/styling for responsive, consistent UI behavior.
@@ -223,8 +223,8 @@ Core Functions:
                 <label class="form-label">Input Mode:</label>
                 <select class="form-select" name="mode" id="mode-select" required>
                     <option value="exon" {% if request.form.get('mode') == 'exon' or not request.form.get('mode') %}selected{% endif %}>Exon Numbers</option>
-                    <option value="transcript" {% if request.form.get('mode') == 'transcript' %}selected{% endif %}>Transcript/cDNA Notation</option>
                     <option value="coordinate" {% if request.form.get('mode') == 'coordinate' %}selected{% endif %}>Genomic Coordinates</option>
+                    <option value="hgvs" {% if request.form.get('mode') == 'hgvs' %}selected{% endif %}>HGVS (g.)</option>
                 </select>
             </div>
 
@@ -253,15 +253,28 @@ Core Functions:
                 </div>
             </div>
 
-            <!-- TRANSCRIPT MODE -->
-            <div id="transcript-fields" style="display:none;">
+            <!-- HGVS MODE -->
+            <div id="hgvs-fields" style="display:none;">
                 <div class="mb-3">
-                    <label class="form-label">cDNA Notation:</label>
-                    <textarea class="form-control" name="cdna_notation" rows="3"></textarea>
+                    <label class="form-label">HGVS (g.) Notation:</label>
+                    <textarea class="form-control" name="hgvs_notation" rows="3"></textarea>
                     <div class="help-text">
-                        Enter HGVS cDNA notation (c. notation)<br>
-                        Accepts both gene symbols (FBN1:c.5065_5546del) and transcript IDs (NM_001406716.1:c.5065_5546del)
+                        Enter HGVS genomic notation (g. notation)<br>
+                        Example: NC_000019.9:g.(13325430_13335371)_(13346648_13352244)del
                     </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Genomic Build:</label>
+                    <select class="form-select" name="build_hgvs">
+                        <option value="GRCh38" selected>GRCh38/hg38</option>
+                        <option value="GRCh37">GRCh37/hg19</option>
+                    </select>
+                    <div class="help-text">Used only if build cannot be inferred from NC accession version.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Gene (optional):</label>
+                    <input type="text" class="form-control" name="gene_hint_hgvs">
+                    <div class="help-text">Optional: helps identify the gene if region contains multiple genes.</div>
                 </div>
             </div>
 
@@ -316,9 +329,14 @@ Core Functions:
                         <div style="margin-bottom: 8px;">
                             <strong>Transcript:</strong> <span style="color: #ffffff; font-weight: 700;">{{ r.transcript }}</span>
                         </div>
-                        {% if r.cdna_notation is defined and r.cdna_notation %}
+                        {% if r.hgvs_notation is defined and r.hgvs_notation %}
                         <div style="margin-bottom: 8px;">
-                            <strong>cDNA Notation:</strong> <code style="color: var(--teal); font-size: 1.05em;">{{ r.cdna_notation }}</code>
+                            <strong>HGVS (g.):</strong> <code style="color: var(--teal); font-size: 1.05em;">{{ r.hgvs_notation }}</code>
+                        </div>
+                        {% endif %}
+                        {% if r.nc_accession is defined and r.nc_accession %}
+                        <div style="margin-bottom: 8px;">
+                            <strong>NC Accession:</strong> <span style="color: #ffffff; font-weight: 700;">{{ r.nc_accession }}</span>
                         </div>
                         {% endif %}
                         {% if r.cnv_type is defined and r.cnv_type %}
@@ -389,7 +407,7 @@ Core Functions:
                             </div>
                             {% set coverage_flags = r.hit_exons|map(attribute='full_exon_coverage')|list %}
                             {% set current_mode = request.form.get('mode') %}
-                            {% if coverage_flags|length > 0 and current_mode in ['coordinate', 'transcript'] %}
+                            {% if coverage_flags|length > 0 and current_mode in ['coordinate', 'hgvs'] %}
                                 {% set full_count = coverage_flags|select('equalto', True)|list|length %}
                                 {% set partial_count = coverage_flags|select('equalto', False)|list|length %}
                                 <div style="margin-top:8px; color:#aad; font-weight:600;">
@@ -451,48 +469,9 @@ Core Functions:
                 </div>
             </div>
 
-            <!-- Example 2: Transcript/cDNA Mode -->
+            <!-- Example 2: Genomic Coordinates - ISCN Format -->
             <div class="result-item">
-                <h5 style="color: var(--teal); margin-bottom: 15px;">Example 2: Transcript/cDNA Notation</h5>
-                <div style="background-color: #0f1216; padding: 15px; border-radius: 8px; border-left: 3px solid var(--teal);">
-                    <div style="margin-bottom: 8px;"><strong>Input Mode:</strong> Transcript/cDNA Notation</div>
-                    <div style="margin-bottom: 8px;"><strong>cDNA Notation:</strong> <code style="color: var(--teal);">FBN1:c.5065_5546del</code></div>
-                    <div style="margin-bottom: 8px;"><strong>Alternative format:</strong> <code style="color: var(--teal);">NM_001406716.1:c.5065_5546del</code></div>
-                    <div style="margin-bottom: 8px;"><strong>CNV Type:</strong> Deletion <span style="color: #888;">(auto-detected from 'del')</span></div>
-                </div>
-                <div style="margin-top: 12px; padding: 10px; background-color: #15181d; border-radius: 6px;">
-                    <div style="font-size: 0.9em; color: #aaa;">
-                        ℹ️ Use this format when you have HGVS cDNA notation. Accepts both:<br>
-                        • Gene symbol format: <code>FBN1:c.5065_5546del</code><br>
-                        • Transcript ID format: <code>NM_001406716.1:c.5065_5546del</code><br>
-                        The 'del' or 'dup' suffix will auto-detect the CNV type.
-                    </div>
-                </div>
-            </div>
-
-            <!-- Example 3: Genomic Coordinates - Simple Format -->
-            <div class="result-item">
-                <h5 style="color: var(--teal); margin-bottom: 15px;">Example 3: Genomic Coordinates (Simple Format)</h5>
-                <div style="background-color: #0f1216; padding: 15px; border-radius: 8px; border-left: 3px solid var(--teal);">
-                    <div style="margin-bottom: 8px;"><strong>Input Mode:</strong> Genomic Coordinates</div>
-                    <div style="margin-bottom: 8px;"><strong>Genomic Input:</strong> <code style="color: var(--teal);">DEL chr17:43,086,436-43,095,443</code></div>
-                    <div style="margin-bottom: 8px;"><strong>Genomic Build:</strong> GRCh38</div>
-                    <div style="margin-bottom: 8px;"><strong>Gene (hint):</strong> BRCA1</div>
-                    <div style="margin-bottom: 8px;"><strong>CNV Type:</strong> Deletion</div>
-                </div>
-                <div style="margin-top: 12px; padding: 10px; background-color: #15181d; border-radius: 6px;">
-                    <div style="font-size: 0.9em; color: #aaa;">
-                        ℹ️ Use this format when you have coordinates from sequencing data. Can use formats like:<br>
-                        • <code>chr17:43,086,436-43,095,443</code><br>
-                        • <code>DEL chr17:43,086,436-43,095,443</code><br>
-                        • <code>17:43086436-43095443</code> (without commas)
-                    </div>
-                </div>
-            </div>
-
-            <!-- Example 4: Genomic Coordinates - ISCN Format -->
-            <div class="result-item">
-                <h5 style="color: var(--teal); margin-bottom: 15px;">Example 4: Genomic Coordinates (ISCN/Microarray Format)</h5>
+                <h5 style="color: var(--teal); margin-bottom: 15px;">Example 2: Genomic Coordinates (ISCN/Microarray Format)</h5>
                 <div style="background-color: #0f1216; padding: 15px; border-radius: 8px; border-left: 3px solid var(--teal);">
                     <div style="margin-bottom: 8px;"><strong>Input Mode:</strong> Genomic Coordinates</div>
                     <div style="margin-bottom: 8px;"><strong>Genomic Input:</strong> <code style="color: var(--teal);">arr[GRCh37]15q21.1(48,741,090_48,756,096)x1</code></div>
@@ -509,15 +488,43 @@ Core Functions:
                         Format: <code>arr[Build]CHROMOSOMEband(start_end)xCOPY</code>
                     </div>
                 </div>
+                <div style="margin-top: 12px; background-color: #2a1d12; border-left: 4px solid #ffb74d; border-radius: 6px; padding: 12px;">
+                    <div style="font-size: 0.92em; color: #ffd79a; font-weight: 700;">
+                        Important: many genomic coordinate formats are accepted.
+                    </div>
+                    <div style="font-size: 0.88em; color: #ffe6bf; margin-top: 6px;">
+                        CNVision parses coordinate elements independently (chromosome, breakpoints, build hints, and copy-number/type hints),
+                        so formats of all kinds that contain the essential information with minor differences in commas, underscores, parentheses, prefixes, spacing, or obsolete elements will have no issues and still resolve to the same final interval.
+                    </div>
+                </div>
             </div>
 
-            <!-- Example 5: Important Notes -->
+            <!-- Example 3: HGVS g. Mode -->
+            <div class="result-item">
+                <h5 style="color: var(--teal); margin-bottom: 15px;">Example 3: HGVS (g.) Mode</h5>
+                <div style="background-color: #0f1216; padding: 15px; border-radius: 8px; border-left: 3px solid var(--teal);">
+                    <div style="margin-bottom: 8px;"><strong>Input Mode:</strong> HGVS (g.)</div>
+                    <div style="margin-bottom: 8px;"><strong>HGVS Input:</strong> <code style="color: var(--teal);">NC_000019.9:g.(13325430_13335371)_(13346648_13352244)del</code></div>
+                    <div style="margin-bottom: 8px;"><strong>Chromosome:</strong> 19 <span style="color: #888;">(from NC_000019)</span></div>
+                    <div style="margin-bottom: 8px;"><strong>Coordinates used:</strong> 13335371-13346648 <span style="color: #888;">(middle two breakpoints)</span></div>
+                    <div style="margin-bottom: 8px;"><strong>CNV Type:</strong> Deletion <span style="color: #888;">(auto-detected from del)</span></div>
+                </div>
+                <div style="margin-top: 12px; padding: 10px; background-color: #15181d; border-radius: 6px;">
+                    <div style="font-size: 0.9em; color: #aaa;">
+                        ℹ️ HGVS g. is parsed as genomic coordinates. The tool auto-detects:<br>
+                        • Chromosome from NC accession (e.g., NC_000019 -> chr19)<br>
+                        • Build when accession version after the decimal (e.g. NC_000019.9) matches GRCh37/GRCh38 mappings<br>
+                        • CNV type from suffix (<code>del</code> or <code>dup</code>)
+                    </div>
+                </div>
+            </div>
+
+            <!-- Example 4: Important Notes -->
             <div class="result-item" style="border-left-color: #ffa500;">
-                <h5 style="color: #ffa500; margin-bottom: 15px;">⚠️ Important Notes</h5>
+                <h5 style="color: #ffa500; margin-bottom: 15px;">Important Notes</h5>
                 <div style="line-height: 1.8;">
                     <div style="margin-bottom: 10px;">
-                        <strong style="color: var(--teal);">Genomic Build:</strong> Make sure to select the correct build (GRCh37/hg19 vs GRCh38/hg38). Using the wrong build will give incorrect results!
-                    </div>
+                        <strong style="color: var(--teal);">Genomic Build & CNV Type:</strong> If selection of genomic build or CNV type differs from the auto-detected information in the input for the genomimc coordinates or HGVS (g.) mode, auto-detected information will be selected to produce results and a note will be displayed informing the user of the discrepancy and which information was used for analysis.
                     <div style="margin-bottom: 10px;">
                         <strong style="color: var(--teal);">Gene Hint:</strong> For genomic coordinates, providing a gene symbol helps ensure accurate results, especially for regions with multiple overlapping genes.
                     </div>
@@ -545,18 +552,18 @@ examplesCollapse.addEventListener("hide.bs.collapse", () => {
 
 const modeSelect = document.querySelector('select[name="mode"]');
 const exonFields = document.getElementById('exon-fields');
-const transcriptFields = document.getElementById('transcript-fields');
+const hgvsFields = document.getElementById('hgvs-fields');
 const coordFields = document.getElementById('coordinate-fields');
 
 function updateModeFields() {
     const mode = modeSelect.value;
     
     exonFields.style.display = 'none';
-    transcriptFields.style.display = 'none';
+    hgvsFields.style.display = 'none';
     coordFields.style.display = 'none';
     
     exonFields.querySelectorAll('input, select').forEach(f => f.required = false);
-    transcriptFields.querySelectorAll('input, select, textarea').forEach(f => f.required = false);
+    hgvsFields.querySelectorAll('input, select, textarea').forEach(f => f.required = false);
     coordFields.querySelectorAll('input, select, textarea').forEach(f => f.required = false);
 
     if (mode === 'exon') {
@@ -564,12 +571,12 @@ function updateModeFields() {
         exonFields.querySelector('input[name="gene_input"]').required = true;
         exonFields.querySelector('input[name="first_exon"]').required = true;
         exonFields.querySelector('input[name="last_exon"]').required = true;
-    } else if (mode === 'transcript') {
-        transcriptFields.style.display = 'block';
-        transcriptFields.querySelector('textarea[name="cdna_notation"]').required = true;
     } else if (mode === 'coordinate') {
         coordFields.style.display = 'block';
         coordFields.querySelector('textarea[name="genomic_input"]').required = true;
+    } else if (mode === 'hgvs') {
+        hgvsFields.style.display = 'block';
+        hgvsFields.querySelector('textarea[name="hgvs_notation"]').required = true;
     }
 }
 
