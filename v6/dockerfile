@@ -1,0 +1,28 @@
+# Use an official Python runtime as a parent image
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+
+# Install build tools (if your project has compiled deps)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy packaging metadata first to leverage Docker cache
+COPY pyproject.toml setup.cfg* /app/
+
+# Copy project
+COPY . /app
+
+# Install only runtime Python dependencies (avoid building a wheel for the repo)
+# Add any libraries your code needs here. `requests` is used for NCBI lookups.
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir requests flask
+
+# Expose a common port (change if your app uses a different one)
+EXPOSE 5000
+
+# Default command: start the web application
+# Mount your `data` folder to `/app/data` when running so MANE file is available.
+CMD ["python", "web_app.py"]
