@@ -137,14 +137,7 @@ You provide:
 
 Used when reports already say "exons X-Y affected".
 
-6.2 Transcript/cDNA Mode
-You provide:
-- HGVS-like cDNA notation (example: FBN1:c.5065_5546del)
-
-System converts cDNA coordinates to genomic positions on transcript model,
-then maps and predicts.
-
-6.3 Genomic Coordinate Mode
+6.2 Genomic Coordinate Mode
 You provide:
 - Genomic coordinate expression (multiple formats accepted)
 
@@ -154,6 +147,17 @@ Parser supports flexible forms including:
 - build aliases (hg19/hg38)
 - copy-number hints (x1/x3)
 - varied separators (comma, underscore, parentheses, etc.)
+
+6.3 HGVS (g.) Mode
+You provide:
+- HGVS genomic notation (example:
+  NC_000019.9:g.(13325430_13335371)_(13346648_13352244)del)
+
+System treats HGVS g. as genomic coordinates by:
+- extracting chromosome from NC accession (NC_000019 -> chr19)
+- using the middle breakpoints as analysis interval (13335371-13346648)
+- inferring CNV type from del/dup suffix
+- inferring GRCh37/GRCh38 from NC accession version when recognized
 
 
 7) DEEP FILE-BY-FILE EXPLANATION
@@ -184,16 +188,16 @@ Key internal functions:
   - NCBI fallback for transcript metadata/exons when needed.
 - `normalize_build(...)`
   - Converts aliases like hg19/hg38 to GRCh labels.
-- `parse_cdna_notation(...)`
-  - Extracts cDNA coordinates and variant type.
 - `parse_genomic_input(...)`
   - Robust parser for many genomic string formats.
+- `parse_hgvs_genomic_notation(...)`
+  - Parses HGVS g. strings into chromosome/start/end/build/type hints.
 - `process_exon_mode(...)`
   - Exon-range analysis pipeline.
-- `process_transcript_mode(...)`
-  - cDNA to genomic mapping and consequence pipeline.
 - `process_genomic_mode(...)`
   - Genomic string to consequence pipeline.
+- `process_hgvs_mode(...)`
+  - HGVS g. to genomic consequence pipeline.
 - `index()`
   - Flask route for form display and submission handling.
 
@@ -311,15 +315,20 @@ How it connects:
 -------------------------------------------------------------------------------
 What it is:
 - Presentation layer (HTML/CSS + Jinja templating).
+- Uses Bootstrap components plus custom CSS for layout and visual consistency.
 
 Why it exists:
 - Separates result rendering from computational logic.
+- Ensures technical results are formatted so users can read and compare outputs
+  quickly without misinterpreting dense data.
 
 Main responsibilities:
 - Render input forms for three modes.
 - Render errors/warnings/results.
 - Display summary values and detailed exon table.
 - Show concise exon range, length checks, and overlap notes.
+- Apply consistent formatting hierarchy (labels, values, tables, notes) so
+  results are understandable at a glance.
 
 How it connects:
 - Receives `result` and `error` objects from `web_app.py`.
@@ -399,7 +408,7 @@ Exon entry contains fields such as:
 - transcript
 - hit_exons
 - predicted_consequence
-- optional warnings/cnv_type/cDNA metadata
+- optional warnings/cnv_type/HGVS metadata
 
 
 10) WALKTHROUGH OF A REAL ANALYSIS REQUEST
@@ -560,7 +569,7 @@ Trace:
 
 12.3 Partial overlap vs full exon assumptions
 - Exon-number mode assumes full exons by definition.
-- Genomic/cDNA modes can hit partial exon segments.
+- Genomic/HGVS modes can hit partial exon segments.
 - This can change coding-length totals and therefore frame classification.
 
 12.4 Clinical context beyond frame logic
