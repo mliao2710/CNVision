@@ -1,284 +1,235 @@
-# CNVision Docker Guide
+# CNVision
 
-This guide documents two valid workflows:
+CNVision is a web-based bioinformatics tool for interpreting intragenic copy
+number variants (CNVs). It predicts whether coding impact is **in-frame**,
+**frameshift/out-of-frame**, or **no CDS impact** using exon/CDS overlap and
+reading-frame logic.
 
-1. **Container-first workflow**:
-   `run -> clone -> install -> run -> cp -> commit -> push`
-2. **Dockerfile build workflow**:
-   `git pull -> docker build -> docker push`
+This README is an operational + technical overview for users and reviewers.
+For a beginner-heavy deep dive, see `explanation.txt`.
 
-All version references use `v#` as a placeholder.
+## What CNVision Solves
 
----
+CNV reports often provide coordinates, but not immediate frame interpretation.
+CNVision automates the repeated interpretation steps:
 
-## A) Terminal roles
+- parse coordinate/HGVS-g inputs
+- resolve build and gene/transcript context
+- map CNV interval to exon/CDS overlap
+- compute coding-length impact
+- classify in-frame vs frameshift
 
-Use two terminals:
+## Scope
 
-- **Terminal 1 (host terminal)**
-  - Docker commands: `run`, `cp`, `ps`, `commit`, `push`, `build`, `rm`
-  - Optional local Git commands
-- **Terminal 2 (inside container shell)**
-  - Linux commands: `apt-get`, `git`, `pip`, `python3`
+CNVision is optimized for frame-consequence interpretation, not full clinical
+classification.
 
-Important: Docker CLI commands run on host terminal only.
+### What it provides
 
----
+- In-frame deletion/duplication calls
+- Frameshift deletion/duplication calls
+- No-CDS-impact output when overlap is outside coding sequence
+- Exon coverage context (whole vs partial overlap)
 
-## B) Container-first workflow (primary path)
+### What it does not fully provide
 
-### 1) Clean old containers (Terminal 1)
+- Full ACMG/clinical pathogenicity assertion
+- Protein-structure impact modeling
+- Comprehensive splice/regulatory interpretation
+- Transcript-agnostic concordance across all isoforms by default
 
-```bash
-docker rm -f cnvision-build
-```
+## Input Modes
 
-Optional full cleanup:
+### 1) Exon Number Mode
 
-```bash
-docker rm -f $(docker ps -aq)
-```
+Use when you already know affected exon numbers.
 
-### 2) Start base container and enter shell (Terminal 1)
+Inputs:
+- Gene symbol or transcript ID
+- First exon
+- Last exon
+- CNV type
 
-```bash
-docker run -it -p 8080:5000 --name cnvision-build python:3.11 /bin/bash
-```
+### 2) Genomic Coordinate Mode
 
-### 3) Inside container: install git, clone repo, enter version dir (Terminal 2)
+Use raw genomic coordinates / ISCN-like strings.
 
-```bash
-apt-get update && apt-get install -y git
-cd /
-git clone https://github.com/mliao2710/CNVision
-cd /CNVision/v#
-```
+Parser is tolerant to varied formatting and supports:
+- `hg19` -> `GRCh37`, `hg38` -> `GRCh38`
+- copy-number hints (`x1` deletion, `x3` duplication)
+- prefixes like `arr`, `seq`, `sseq`
+- mixed separators (commas, underscores, parentheses, hyphen ranges)
 
-### 4) Inside container: install dependencies (Terminal 2)
+Examples:
+- `DEL chr15:48,741,090-48,756,096`
+- `arr[GRCh37]15q21.1(48,741,090_48,756,096)x1`
+- `seq[GRCh37]19p13.2p13.2(13335371_13346648)x1`
 
-```bash
-pip install flask requests
-```
+### 3) HGVS (g.) Mode
 
-Optional extras:
+Use HGVS genomic notation as coordinate input.
 
-```bash
-pip install biopython pandas numpy
-```
-
-### 5) Inside container: run app (Terminal 2)
-
-```bash
-python3 web_app.py
-```
-
-Open browser:
-- `http://localhost:8080`
-
----
-
-## C) Copy large data file from host
-
-`gene2refseq` may be excluded from GitHub due to size.
-
-Terminal 1:
-
-```bash
-docker cp ~/Desktop/cnvision/data/gene2refseq cnvision-build:/CNVision/v#/data/gene2refseq
-```
-
-Verify running container:
-
-```bash
-docker ps
-```
-
----
-
-## D) Freeze and publish image from running container
-
-### 6) Commit container to a version tag (Terminal 1)
-
-```bash
-docker commit <container_id> mliao27/cnvision:v#
-```
+Parser behavior:
+- chromosome from NC accession (e.g., `NC_000019` -> chr19)
+- coordinate interval from `(a_b)_(c_d)` using `b..c`
+- CNV type hint from suffix (`del`/`dup`)
+- build inference from NC accession version when recognized
 
 Example:
+- `NC_000019.9:g.(13325430_13335371)_(13346648_13352244)del`
 
-```bash
-docker commit 256b1c16a204 mliao27/cnvision:v#
+## Core Architecture
+
+Pipeline:
+
+`Input -> Parse -> Resolve -> Map -> Predict -> Render`
+
+Detailed stages:
+1. Parse/normalize input string(s)
+2. Resolve build + gene/transcript context
+3. Map genomic interval to transcript exon/CDS overlap
+4. Sum coding overlap length
+5. Apply modulo-3 rule for frame consequence
+6. Render result summary + supporting details in UI
+   - (Bootstrap + structured formatting keep outputs readable for review)
+
+## Project Structure (Runtime Core)
+
+- `web_app.py`
+  - Flask entry point and orchestration layer
+  - mode routing, parser dispatch, result assembly
+- `mane_loader.py`
+  - loads GRCh37/GRCh38 references into in-memory structures
+  - attaches CDS segments and CDS lengths to exons
+- `coordinate_mapper.py`
+  - overlap engine: CNV -> exon hits
+  - computes coding overlap + partial/full exon flags
+- `functional_predictor.py`
+  - consequence classifier (in-frame/frameshift/no-CDS)
+- `iscn_parser.py`
+  - ISCN helper parsing + genes-in-region lookup
+- `templates/index.html`
+  - UI rendering with Bootstrap + custom formatting for readable result hierarchy
+- `static/logo.png`
+  - UI branding asset
+- `data/`
+  - reference datasets
+
+## Required Data Files
+
+Place these files in `data/`:
+
+- `MANE.GRCh38.v1.4.refseq_genomic.gff.gz`
+- `GRCh37.ref_seq_select.gz`
+- `gene2refseq`
+
+## Literal Trace (One Request)
+
+Example request:
+- Mode: HGVS (g.)
+- Input: `NC_000019.9:g.(13325430_13335371)_(13346648_13352244)del`
+- Gene hint: `NOTCH3`
+
+Execution path:
+1. `web_app.index()` reads form values.
+2. `process_hgvs_mode(...)` handles HGVS-mode workflow.
+3. `parse_hgvs_genomic_notation(...)` extracts chromosome/start/end/build/type hints.
+4. `get_mane_data(...)` selects GRCh38 annotation set.
+5. `coordinate_mapper.map_cnv_to_exons(...)` computes exon/CDS overlap.
+6. `functional_predictor.predict_cnv_effect(...)` computes frame consequence.
+7. `templates/index.html` renders result + evidence context.
+
+Typical parsed object:
+```json
+{
+  "chromosome": "19",
+  "start": 13335371,
+  "end": 13346648,
+  "build": "GRCh37",
+  "cnv_type_hint": "deletion"
+}
 ```
 
-### 7) Push to Docker Hub (Terminal 1)
+Typical consequence:
+- `in-frame deletion (1 exon)` when total coding overlap is divisible by 3.
 
+## Output Interpretation
+
+Each result card provides:
+- gene + transcript used
+- consequence label
+- exon table (with coding lengths)
+- concise exon range
+- total coding length and amino-acid check (`length / 3`)
+- overlap context (whole/partial exon)
+
+Important interpretation note:
+- Exon-number mode assumes selected full exons.
+- Genomic/HGVS inputs can produce partial exon overlap.
+- So exon-mode and genomic-mode can disagree if overlap boundaries differ.
+
+## Build and Transcript Caveats
+
+### Build mismatch
+Using the wrong build is a common source of incorrect mapping.
+
+### Transcript mismatch
+Different transcripts of the same gene can change:
+- exon numbering
+- exon boundaries
+- coding-length totals
+- final frame consequence
+
+If comparing to an external validation table, transcript/build must match.
+
+## Local Run
+
+1. Install Python 3.10+
+2. Install dependencies:
+   ```bash
+   pip install flask requests
+   ```
+3. Ensure `data/` contains required files
+4. Start app:
+   ```bash
+   python3 web_app.py
+   ```
+5. Open:
+   `http://localhost:5000`
+
+## Docker Run
+
+Build image:
 ```bash
-docker push mliao27/cnvision:v#
+docker build -t cnvision:latest .
 ```
 
----
-
-## E) Verify pushed image
-
+Run container:
 ```bash
-docker run --rm -it -p 8080:5000 mliao27/cnvision:v# python3 web_app.py
+docker run -it --rm -p 5000:5000 cnvision:latest
 ```
 
-Then open:
-- `http://localhost:8080`
-
----
-
-## F) Dockerfile build workflow (alternative, reproducible)
-
-This workflow builds from the current local checkout.
-
-### What "build from local files" means
-
-`docker build ... .` uses the current directory (`.`) as build context.
-The resulting image reflects local files at build time (subject to
-`.dockerignore`).
-
-It does **not** auto-update from GitHub. A `git pull` step is still required.
-
-### Steps (Terminal 1)
-
+Optional local data mount:
 ```bash
-cd ~/Desktop/cnvision
-git pull origin main
-docker build -t mliao27/cnvision:v# .
-docker push mliao27/cnvision:v#
+docker run -it --rm -v $(pwd)/data:/app/data -p 5000:5000 cnvision:latest
 ```
 
-Run for verification:
+## Validation Guidance
 
-```bash
-docker run --rm -it -p 8080:5000 -v $(pwd)/data:/app/data mliao27/cnvision:v#
-```
+For robust checks, include mixed cases:
+- whole-exon events
+- partial-exon events
+- intronic/no-CDS events
+- 1-bp boundary-shift pairs
 
----
+Always record:
+- genome build used
+- transcript used
+- expected consequence definition source
 
-## G) Updating after small Git changes
+## Current Status
 
-Two update patterns are valid.
+Current implementation is a focused, CDS-aware CNV frame interpreter with a
+web-first workflow and flexible input parsing.
 
-### Pattern A: update inside running container (matches observed flow)
-
-Terminal 2 (inside `/CNVision/v#`):
-
-```bash
-git pull
-python3 web_app.py
-```
-
-Terminal 1 (host):
-
-```bash
-docker cp ~/Desktop/cnvision/data/gene2refseq cnvision-build:/CNVision/v#/data/gene2refseq
-docker ps
-docker commit <container_id> mliao27/cnvision:v#
-docker push mliao27/cnvision:v#
-```
-
-### Pattern B: update local repo then rebuild with Dockerfile
-
-Terminal 1:
-
-```bash
-cd ~/Desktop/cnvision
-git config --global credential.helper osxkeychain
-git pull origin main
-# apply edits if needed
-git add .
-git commit -m "v#: <small change summary>"
-git push origin main
-docker build -t mliao27/cnvision:v# .
-docker push mliao27/cnvision:v#
-```
-
-GitHub auth note for Pattern B:
-- GitHub password auth is not supported for Git operations over HTTPS.
-- When prompted for password, paste a GitHub Personal Access Token (PAT).
-- Username remains the GitHub username.
-- The macOS keychain helper stores the token after first successful push.
-
-Optional `latest` tag update:
-
-```bash
-docker tag mliao27/cnvision:v# mliao27/cnvision:latest
-docker push mliao27/cnvision:latest
-```
-
----
-
-## H) Common errors and fixes
-
-### `fatal: 'origin' does not appear to be a git repository`
-Cause: local repo has no remote configured.
-
-Host terminal fix:
-
-```bash
-cd ~/Desktop/cnvision
-git remote -v
-git remote add origin https://github.com/mliao2710/CNVision.git
-git remote -v
-git pull origin main
-```
-
-### `error: No such remote 'origin'` when running `git remote set-url`
-Cause: `origin` does not exist yet.
-
-Use `add` first:
-
-```bash
-git remote add origin https://github.com/mliao2710/CNVision.git
-```
-
-Then `set-url` is available for future changes:
-
-```bash
-git remote set-url origin https://github.com/mliao2710/CNVision.git
-```
-
-### `git pull` still fails after remote setup
-Check that commands are run in the correct repo folder:
-
-```bash
-pwd
-git rev-parse --show-toplevel
-```
-
-Both should point to the CNVision repo path.
-
-### `container name already in use`
-
-```bash
-docker rm -f cnvision-build
-```
-
-### `ModuleNotFoundError: flask`
-Inside container:
-
-```bash
-pip install flask requests
-```
-
-### `python3: can't open file 'web_app.py'`
-Wrong directory. Use:
-
-```bash
-cd /CNVision/v#
-python3 web_app.py
-```
-
-### `docker: command not found` inside container
-Docker commands must run on host terminal.
-
-### Host port conflict
-Use a different host port:
-
-```bash
-docker run --rm -it -p 8081:5000 mliao27/cnvision:v# python3 web_app.py
-```
-
-Then open `http://localhost:8081`.
+For full conceptual and educational explanation, see `explanation.txt`.
