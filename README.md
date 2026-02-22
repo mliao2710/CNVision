@@ -6,7 +6,7 @@ number variants (CNVs). It predicts whether coding impact is **in-frame**,
 reading-frame logic.
 
 This README is an operational + technical overview for users and reviewers.
-For a beginner-heavy deep dive, see `explanation.txt`.
+For a beginner-heavy deep dive, see `explanation.md`.
 
 ## What CNVision Solves
 
