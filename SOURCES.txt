@@ -1,6 +1,0 @@
-README.md
-pyproject.toml
-cnvision.egg-info/PKG-INFO
-cnvision.egg-info/SOURCES.txt
-cnvision.egg-info/dependency_links.txt
-cnvision.egg-info/top_level.txt
