@@ -13,16 +13,18 @@ Core Functions:
 - Return structured outputs to the Jinja template for display.
 """
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, session
 from coordinate_mapper import map_cnv_to_exons, map_exon_numbers_to_regions
 from functional_predictor import predict_cnv_effect
 from mane_loader import load_mane_exons
 from iscn_parser import find_genes_in_region
+from metrics import init_metrics, increment, get_value
 import os
 import re
 import requests
 import xml.etree.ElementTree as ET
 import time
+import secrets
 import warnings
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
@@ -160,6 +162,15 @@ def fetch_refseq_info(transcript_id):
         return None
 
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "cnvision-dev-secret-change-me")
+init_metrics()
+
+
+def _new_form_token():
+    """Create a one-time token used to distinguish fresh submit vs. refresh replay."""
+    token = secrets.token_urlsafe(24)
+    session["form_token"] = token
+    return token
 
 # STEP: Load both reference builds at startup.
 repo_root = os.path.dirname(os.path.abspath(__file__))
@@ -679,10 +690,16 @@ def process_hgvs_mode(hgvs_notation, build, cnv_type, gene_hint=None):
 
 @app.route("/", methods=["GET", "POST"])
 def index():
+    if request.method == "GET" and not session.get("visit_counted"):
+        increment("visits", 1)
+        session["visit_counted"] = True
     result = []
     error = None
+    form_token = session.get("form_token") or _new_form_token()
     
     if request.method == "POST":
+        submitted_token = request.form.get("form_token", "")
+        token_is_fresh = bool(submitted_token) and bool(form_token) and secrets.compare_digest(submitted_token, form_token)
         mode = request.form.get("mode", "exon")
         cnv_type = request.form.get("cnv_type", "deletion").strip().lower()
         build = request.form.get("build", "GRCh38").strip()
@@ -690,37 +707,61 @@ def index():
         try:
             if mode == "exon":
                 gene_input = request.form.get("gene_input", "").strip()
-                first_exon = int(request.form.get("first_exon", 0))
-                last_exon = int(request.form.get("last_exon", 0))
-                
-                result = process_exon_mode(
-                    gene_input, cnv_type, first_exon, last_exon, build
-                )
+                first_exon_raw = request.form.get("first_exon", "").strip()
+                last_exon_raw = request.form.get("last_exon", "").strip()
+                if not gene_input or not first_exon_raw or not last_exon_raw:
+                    error = "Please fill in Gene/Transcript, First Exon, and Last Exon before analyzing."
+                else:
+                    first_exon = int(first_exon_raw)
+                    last_exon = int(last_exon_raw)
+                    result = process_exon_mode(
+                        gene_input, cnv_type, first_exon, last_exon, build
+                    )
                 
             elif mode == "coordinate":
                 genomic_input = request.form.get("genomic_input", "").strip()
                 gene_hint = request.form.get("gene_hint", "").strip()
-                
-                result = process_genomic_mode(
-                    genomic_input, build, cnv_type,
-                    gene_hint if gene_hint else None
-                )
+                if not genomic_input:
+                    error = "Please enter genomic coordinates before analyzing."
+                else:
+                    result = process_genomic_mode(
+                        genomic_input, build, cnv_type,
+                        gene_hint if gene_hint else None
+                    )
             elif mode == "hgvs":
                 hgvs_notation = request.form.get("hgvs_notation", "").strip()
                 build_hgvs = request.form.get("build_hgvs", "").strip()
                 gene_hint_hgvs = request.form.get("gene_hint_hgvs", "").strip()
-                selected_build = build_hgvs if build_hgvs else build
-                result = process_hgvs_mode(
-                    hgvs_notation, selected_build, cnv_type,
-                    gene_hint_hgvs if gene_hint_hgvs else None
-                )
+                if not hgvs_notation:
+                    error = "Please enter HGVS (g.) notation before analyzing."
+                else:
+                    selected_build = build_hgvs if build_hgvs else build
+                    result = process_hgvs_mode(
+                        hgvs_notation, selected_build, cnv_type,
+                        gene_hint_hgvs if gene_hint_hgvs else None
+                    )
+            else:
+                error = "Invalid input mode."
+
+            has_successful_result = any(not item.get("error") for item in result) if result else False
+            if token_is_fresh and error is None and has_successful_result:
+                increment("gene_queries", 1)
 
         except ValueError as e:
             error = f"Invalid input: {str(e)}"
         except Exception as e:
             error = f"Error: {str(e)}"
+        finally:
+            form_token = _new_form_token()
     
-    return render_template("index.html", result=result, error=error)
+    return render_template(
+        "index.html",
+        result=result,
+        error=error,
+        total_visits=get_value("visits"),
+        total_gene_queries=get_value("gene_queries"),
+        form_token=form_token,
+    )
 
 
 if __name__ == "__main__":
