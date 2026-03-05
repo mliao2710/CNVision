@@ -690,9 +690,8 @@ def process_hgvs_mode(hgvs_notation, build, cnv_type, gene_hint=None):
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    if request.method == "GET" and not session.get("visit_counted"):
+    if request.method == "GET":
         increment("visits", 1)
-        session["visit_counted"] = True
     result = []
     error = None
     form_token = session.get("form_token") or _new_form_token()
