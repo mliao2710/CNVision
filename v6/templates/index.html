@@ -67,6 +67,23 @@ Core Functions:
             text-shadow: 0 0 8px var(--teal-dim);
         }
 
+        .stats-strip {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin: -12px 0 26px 0;
+        }
+
+        .stat-chip {
+            background: rgba(0, 200, 255, 0.1);
+            border: 1px solid rgba(0, 200, 255, 0.35);
+            border-radius: 999px;
+            padding: 7px 14px;
+            font-size: 0.9rem;
+            color: #ddf8ff;
+        }
+
         h3 {
             color: var(--teal);
             margin-top: 30px;
@@ -223,6 +240,10 @@ Core Functions:
     <p class="subheading">
         <strong>A Computational Framework to Predict Functional Impact of Intragenic Copy Number Variants</strong>
     </p>
+    <div class="stats-strip">
+        <div class="stat-chip">Total Visits: <strong>{{ total_visits }}</strong></div>
+        <div class="stat-chip">Gene Queries: <strong>{{ total_gene_queries }}</strong></div>
+    </div>
 
     {% if result and result|length > 0 %}
     <div class="result-banner">
@@ -232,6 +253,7 @@ Core Functions:
 
     <div class="card-dark">
         <form method="POST" class="mb-4">
+            <input type="hidden" name="form_token" value="{{ form_token }}">
             <h3>CNV Input</h3>
 
             <div class="mb-3">
