@@ -30,137 +30,6 @@ warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 _ncbi_cache = {}
 
-def fetch_refseq_info(transcript_id):
-    """Fetch gene symbol and genomic exon coordinates from NCBI."""
-    base_id = transcript_id.split('.')[0]
-    
-    if base_id in _ncbi_cache:
-        return _ncbi_cache[base_id]
-    
-    NCBI_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-    
-    try:
-        # STEP 1: Resolve transcript accession to Gene ID.
-        r = requests.get(f"{NCBI_BASE}/esearch.fcgi", params={
-            "db": "gene",
-            "term": f"{base_id}[Gene RefSeq]",
-            "retmode": "xml"
-        }, timeout=10, verify=False)
-        r.raise_for_status()
-        
-        root = ET.fromstring(r.content)
-        id_list = root.findall(".//IdList/Id")
-        
-        # Fallback query when primary term has no hits.
-        if not id_list:
-            r = requests.get(f"{NCBI_BASE}/esearch.fcgi", params={
-                "db": "gene",
-                "term": f"{base_id}[RefSeq]",
-                "retmode": "xml"
-            }, timeout=10, verify=False)
-            r.raise_for_status()
-            root = ET.fromstring(r.content)
-            id_list = root.findall(".//IdList/Id")
-        
-        if not id_list:
-            return None
-        
-        gene_id = id_list[0].text
-        time.sleep(0.4)
-        
-        # STEP 2: Parse `gene_table` for strand/chromosome/exon rows.
-        r = requests.get(f"{NCBI_BASE}/efetch.fcgi", params={
-            "db": "gene",
-            "id": gene_id,
-            "rettype": "gene_table",
-            "retmode": "text"
-        }, timeout=10, verify=False)
-        r.raise_for_status()
-        
-        gene_table = r.text
-        gene_symbol = None
-        chromosome = None
-        strand = None
-        exons = []
-        
-        lines = gene_table.split('\n')
-        in_our_exon_table = False
-        past_header = False
-        
-        for line in lines:
-            stripped = line.strip()
-            
-            # Gene symbol is the first token on the first non-empty data line.
-            if not gene_symbol and stripped and not stripped.startswith("Gene ID"):
-                gene_symbol = stripped.split()[0]
-            
-            # Parse reference line for strand and chromosome.
-            if "Primary Assembly" in stripped:
-                if "minus strand" in stripped:
-                    strand = "-"
-                elif "plus strand" in stripped:
-                    strand = "+"
-                if "NC_" in stripped:
-                    nc_part = stripped.split("NC_")[1]
-                    nc_num = nc_part.split(".")[0]
-                    chrom_num = str(int(nc_num))
-                    chromosome = f"chr{chrom_num}"
-            
-            # Start parsing once we hit the transcript-specific exon table.
-            if f"Exon table for" in stripped and base_id in stripped:
-                in_our_exon_table = True
-                past_header = False
-                exons = []
-                continue
-            
-            if in_our_exon_table:
-                if "---" in stripped:
-                    past_header = True
-                    continue
-                if not past_header:
-                    continue
-                
-                # Empty line ends this exon section.
-                if stripped == "":
-                    if exons:
-                        break
-                    continue
-                
-                # Parse genomic interval in first column (e.g. 7687490-7687377).
-                parts = stripped.split()
-                if len(parts) >= 1 and "-" in parts[0]:
-                    try:
-                        coord1, coord2 = parts[0].split("-")
-                        start = min(int(coord1), int(coord2))
-                        end = max(int(coord1), int(coord2))
-                        
-                        exons.append({
-                            "exon": len(exons) + 1,
-                            "start": start,
-                            "end": end,
-                            "strand": strand,
-                            "length": end - start + 1,
-                            "chromosome": chromosome
-                        })
-                    except (ValueError, IndexError):
-                        continue
-        
-        if not gene_symbol:
-            return None
-        
-        result = {
-            "gene_symbol": gene_symbol,
-            "transcript_id": base_id,
-            "exons": exons,
-            "chromosome": chromosome,
-            "strand": strand
-        }
-        _ncbi_cache[base_id] = result
-        return result
-            
-    except Exception:
-        return None
-
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "cnvision-dev-secret-change-me")
 init_metrics()
@@ -411,6 +280,33 @@ def parse_genomic_input(genomic_string):
     return None
 
 
+_mane_select_cache = {}
+
+def get_mane_select_transcripts(annotation_file):
+    """Return RefSeq transcript IDs tagged as MANE Select."""
+    import gzip
+
+    if annotation_file in _mane_select_cache:
+        return _mane_select_cache[annotation_file]
+
+    mane_select = set()
+
+    with gzip.open(annotation_file, "rt") as f:
+        for line in f:
+            if "\tmRNA\t" not in line:
+                continue
+            if "tag=MANE Select" not in line:
+                continue
+
+            for item in line.rstrip().split("\t")[-1].split(";"):
+                if item.startswith("transcript_id="):
+                    mane_select.add(item.split("=", 1)[1])
+                    break
+
+    _mane_select_cache[annotation_file] = mane_select
+    return mane_select
+
+
 def process_exon_mode(gene_input, cnv_type, first_exon, last_exon, build="GRCh38"):
     """Process exon mode input - analyzes full exons only.
     
@@ -422,8 +318,6 @@ def process_exon_mode(gene_input, cnv_type, first_exon, last_exon, build="GRCh38
     gene_input = gene_input.strip().upper()
     gene = None
     transcript = None
-    use_ncbi_data = False
-    ncbi_exons = None
     
     # STEP 1: Resolve user input to gene/transcript.
     if gene_input.startswith('NM_'):
@@ -432,110 +326,91 @@ def process_exon_mode(gene_input, cnv_type, first_exon, last_exon, build="GRCh38
         gene = _transcript_to_gene.get(gene_input) or _transcript_to_gene.get(transcript_base)
         
         if gene:
-            transcript = list(mane_data[gene].keys())[0]
+            available_transcripts = mane_data[gene]
+
+            # Preserve the exact transcript requested by the user when available.
+            if gene_input in available_transcripts:
+                transcript = gene_input
+            else:
+                # Allow versionless RefSeq accessions.
+                matching_transcripts = [
+                    tx for tx in available_transcripts
+                    if tx.split('.')[0] == transcript_base
+                ]
+
+                if matching_transcripts:
+                    transcript = matching_transcripts[0]
+                else:
+                    return [{
+                        "error":
+                        f"Transcript '{gene_input}' could not be matched to the "
+                        f"loaded {build} reference annotation."
+                    }]
         else:
-            ncbi_data = fetch_refseq_info(transcript_base)
-            
-            if not ncbi_data or not ncbi_data.get('gene_symbol'):
-                return [{"error": f"Could not fetch transcript '{gene_input}' from NCBI. Transcript may not exist or NCBI may be unavailable."}]
-            
-            gene = ncbi_data['gene_symbol']
-            transcript = gene_input
-            ncbi_exons = ncbi_data.get('exons', [])
-            use_ncbi_data = True
-            
-            if not ncbi_exons:
-                return [{"error": f"Transcript '{gene_input}' was found (gene: {gene}) but has no exon data in NCBI."}]
+            return [{
+                "error":
+                f"Transcript '{gene_input}' is not available in the loaded "
+                f"{build} reference annotation. CNVision only performs "
+                f"reading-frame prediction for transcripts with validated "
+                f"coding-sequence annotations."
+            }]
     else:
         gene = gene_input
         canonical = _mane_gene_index.get(gene.lower())
         if canonical:
             gene = canonical
-            transcript = list(mane_data[gene].keys())[0]
+            available_transcripts = list(mane_data[gene].keys())
+
+            # GRCh38: prefer MANE Select for gene-symbol input.
+            if build == "GRCh38":
+                mane_select = get_mane_select_transcripts(mane_path_grch38)
+                select_matches = [
+                    tx for tx in available_transcripts
+                    if tx in mane_select
+                ]
+
+                transcript = (
+                    select_matches[0]
+                    if select_matches
+                    else available_transcripts[0]
+                )
+            else:
+                # GRCh37 RefSeq Select dataset already contains selected transcripts.
+                transcript = available_transcripts[0]
         else:
             return [{"error": f"Gene '{gene_input}' not found in MANE {build} data"}]
     
-    # STEP 2: Run exon-range analysis with the resolved data source.
-    if use_ncbi_data:
-        max_exon = len(ncbi_exons)
-        if first_exon < 1 or last_exon > max_exon:
-            return [{"error": f"Exon range {first_exon}-{last_exon} exceeds transcript bounds. {transcript} has {max_exon} exons."}]
-        
-        exons_in_range = [e for e in ncbi_exons if first_exon <= e['exon'] <= last_exon]
-        
-        if not exons_in_range:
-            return [{"error": f"Exons {first_exon}-{last_exon} not found in transcript {transcript}. This transcript has {len(ncbi_exons)} exons."}]
-        
-        genomic_start = min(e['start'] for e in exons_in_range)
-        genomic_end = max(e['end'] for e in exons_in_range)
-        
-        # Build normalized exon-hit payload.
-        hits = []
-        for exon in exons_in_range:
-            hit = {
-                'gene': gene,
-                'transcript': transcript,
-                'exon': exon['exon'],
-                'start': exon['start'],
-                'end': exon['end'],
-                'strand': exon.get('strand') or ncbi_data.get('strand') or '+',
-                'length': exon['end'] - exon['start'] + 1,
-                'chromosome': exon.get('chromosome') or ncbi_data.get('chromosome') or 'unknown'
-            }
-            hits.append(hit)
-        
-        total_length = sum(h['length'] for h in hits)
-        is_in_frame = (total_length % 3) == 0
-        
-        if cnv_type == "deletion":
-            if is_in_frame:
-                consequence = f"in-frame deletion ({len(hits)} exon{'s' if len(hits) > 1 else ''})"
-            else:
-                consequence = f"frameshift deletion ({len(hits)} exon{'s' if len(hits) > 1 else ''})"
-        else:
-            if is_in_frame:
-                consequence = f"in-frame duplication ({len(hits)} exon{'s' if len(hits) > 1 else ''})"
-            else:
-                consequence = f"frameshift duplication ({len(hits)} exon{'s' if len(hits) > 1 else ''})"
-        
-        result = {
-            "gene": gene,
-            "transcript": transcript,
-            "predicted_consequence": consequence,
-            "hit_exons": hits,
-            "cnv_type": cnv_type,
-            "data_source": "NCBI (non-MANE transcript)"
-        }
-        
-        return [result]
-        
-    else:
-        # MANE-backed path.
-        exons = mane_data[gene][transcript]
-        max_exon = max(e['exon'] for e in exons)
-        if first_exon < 1 or last_exon > max_exon:
-            return [{"error": f"Exon range {first_exon}-{last_exon} exceeds transcript bounds. {transcript} has {max_exon} exons."}]
-        
-        cnv_region = map_exon_numbers_to_regions(gene, transcript, first_exon, last_exon, mane_data)
-        if cnv_region is None:
-            return [{"error": "Invalid exon numbers"}]
-        
-        chromosome = exons[0].get("chromosome", "1") if exons else "1"
-        
-        cnv = {"gene": gene, "start": cnv_region[0], "end": cnv_region[1], "type": cnv_type, "chromosome": chromosome}
-        hits = map_cnv_to_exons(cnv, mane_data, transcript)
-        
-        for h in hits:
-            if "gene" not in h or not h.get("gene"):
-                h["gene"] = gene
-        
-        effects = predict_cnv_effect(hits, mane_data)
-        
-        for effect in effects:
-            effect['cnv_type'] = cnv_type
-            effect['data_source'] = 'MANE'
-        
-        return effects
+    # STEP 2: Run exon-range analysis using the loaded reference annotation.
+
+    exons = mane_data[gene][transcript]
+    max_exon = max(e['exon'] for e in exons)
+    if first_exon < 1 or last_exon > max_exon:
+        return [{"error": f"Exon range {first_exon}-{last_exon} exceeds transcript bounds. {transcript} has {max_exon} exons."}]
+    
+    cnv_region = map_exon_numbers_to_regions(gene, transcript, first_exon, last_exon, mane_data)
+    if cnv_region is None:
+        return [{"error": "Invalid exon numbers"}]
+    
+    chromosome = exons[0].get("chromosome", "1") if exons else "1"
+    
+    cnv = {"gene": gene, "start": cnv_region[0], "end": cnv_region[1], "type": cnv_type, "chromosome": chromosome}
+    hits = map_cnv_to_exons(cnv, mane_data, transcript)
+    
+    for h in hits:
+        if "gene" not in h or not h.get("gene"):
+            h["gene"] = gene
+    
+    effects = predict_cnv_effect(hits, mane_data)
+    
+    for effect in effects:
+        effect['cnv_type'] = cnv_type
+        effect['data_source'] = (
+        'MANE Select/Plus Clinical v1.4'
+        if build == 'GRCh38'
+        else 'RefSeq Select (GRCh37)'
+    )
+    
+    return effects
 
 
 def _analyze_genomic_interval(chromosome, start, end, build, cnv_type, gene_hint=None, warnings_list=None):
@@ -561,22 +436,59 @@ def _analyze_genomic_interval(chromosome, start, end, build, cnv_type, gene_hint
     if gene not in mane_data:
         return [{"error": f"Gene '{gene}' not found in MANE {build} data"}]
 
-    transcript = list(mane_data[gene].keys())[0]
+    available_transcripts = list(mane_data[gene].keys())
+
+    # Prefer MANE Select for GRCh38 gene-based genomic/HGVS analysis.
+    if build == "GRCh38":
+        mane_select = get_mane_select_transcripts(mane_path_grch38)
+        select_matches = [
+            tx for tx in available_transcripts
+            if tx in mane_select
+        ]
+        transcript = (
+            select_matches[0]
+            if select_matches
+            else available_transcripts[0]
+        )
+    else:
+        transcript = available_transcripts[0]
+
     exons = mane_data[gene][transcript]
 
-    # STEP 2: Add boundary warnings for start/stop involvement.
-    gene_start = min(e['start'] for e in exons)
-    gene_end = max(e['end'] for e in exons)
+    # Flag CNV breakpoints at or immediately adjacent to exon boundaries.
+    # This indicates possible splice-site involvement but does not predict
+    # the functional consequence of altered splicing.
+    splice_boundary_hits = []
 
-    affects_start = start <= gene_start
-    affects_end = end >= gene_end
+    for exon in exons:
+        exon_number = exon.get("exon")
+        exon_start = exon["start"]
+        exon_end = exon["end"]
 
-    if affects_start and affects_end:
-        return [{"error": f"CNV encompasses entire gene {gene} (transcription start site to stop codon). This would result in complete gene deletion/duplication. Region: chr{chromosome}:{start:,}-{end:,}, Gene span: {gene_start:,}-{gene_end:,}."}]
-    if affects_start:
-        warnings.append(f"⚠️ CNV affects transcription start site of {gene}. This may prevent transcription initiation.")
-    if affects_end:
-        warnings.append(f"⚠️ CNV affects stop codon of {gene}. This may result in a truncated or extended protein product.")
+        for breakpoint_name, breakpoint in (("start", start), ("end", end)):
+            if abs(breakpoint - exon_start) <= 2 or abs(breakpoint - exon_end) <= 2:
+                splice_boundary_hits.append(
+                    f"{breakpoint_name} breakpoint near exon {exon_number} boundary"
+                )
+
+    if splice_boundary_hits:
+        warnings.append(
+            "⚠️ CNV breakpoint is at or within 2 bp of an exon boundary. "
+            "Potential splice-site involvement should be evaluated separately; "
+            "CNVision does not predict splicing consequences."
+        )
+
+    # STEP 2: Identify complete transcript-span involvement without
+    # equating transcript boundaries with translation start/stop codons.
+    transcript_start = min(e["start"] for e in exons)
+    transcript_end = max(e["end"] for e in exons)
+
+    if start <= transcript_start and end >= transcript_end:
+        warnings.append(
+            f"⚠️ CNV spans the full annotated transcript region for "
+            f"{gene} ({transcript}). Reading-frame prediction alone may "
+            f"not capture the complete molecular consequence."
+        )
 
     cnv = {"gene": gene, "start": start, "end": end, "type": cnv_type, "chromosome": f"chr{chromosome}"}
     hits = map_cnv_to_exons(cnv, mane_data, transcript)
@@ -587,7 +499,8 @@ def _analyze_genomic_interval(chromosome, start, end, build, cnv_type, gene_hint
             "gene": gene,
             "transcript": transcript,
             "hit_exons": [],
-            "predicted_consequence": "intronic deletion (no exon overlap in MANE Select transcript)"
+            "predicted_consequence":
+                f"intronic {cnv_type} (no exon overlap in selected transcript)"
         }
         result["cnv_type"] = cnv_type
         if warnings:

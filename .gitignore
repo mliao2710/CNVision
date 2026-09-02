@@ -1,0 +1,15 @@
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Local backups
+*.backup
+*.bak
+
+# macOS
+.DS_Store
+
+# Python environments
+.venv/
+venv/
+env/
