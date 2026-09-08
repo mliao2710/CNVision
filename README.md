@@ -233,3 +233,7 @@ Current implementation is a focused, CDS-aware CNV frame interpreter with a
 web-first workflow and flexible input parsing.
 
 For full conceptual and educational explanation, see `explanation.md`.
+
+## Reference annotation and versioning
+
+CNVision uses build-specific transcript annotation resources rather than coordinate conversion between genome assemblies. GRCh38 analyses use MANE Release v1.4 aligned to GRCh38.p14 (NCBI assembly GCF_000001405.40), whereas GRCh37 analyses use the bundled RefSeq Select annotation for hg19/GRCh37. Reference annotations remain fixed within a CNVision software release to support reproducibility, and changes to bundled reference resources are documented with subsequent versioned releases. The CNVision software version, selected genome build, and reference annotation are reported with each successful analysis.
